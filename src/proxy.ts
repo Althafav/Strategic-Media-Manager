@@ -4,7 +4,8 @@ import { recordView } from "@/lib/shares";
 
 // /api/sync is called by Vercel Cron and checks its own CRON_SECRET.
 // /s/<token> pages are share links; they check the token themselves.
-const PUBLIC_PATHS = ["/login", "/api/sync", "/s"];
+// /test-login and /sso-login are the Microsoft SSO test pages (lib/sso.ts); they never create a session.
+const PUBLIC_PATHS = ["/login", "/api/sync", "/s", "/test-login", "/sso-login"];
 // Media APIs called from share pages carry ?t=<token>&sig=…, verified in the route (lib/access.ts).
 const SHARE_APIS = ["/api/thumb/", "/api/cover/", "/api/download/", "/api/manifest"];
 
