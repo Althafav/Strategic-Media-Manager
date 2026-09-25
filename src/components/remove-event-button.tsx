@@ -41,16 +41,6 @@ export function RemoveEventButton({ slug, title, className = "" }: { slug: strin
               event again later with the same link.
             </p>
           </div>
-          <label className="block">
-            <span className="text-sm font-medium">Admin key</span>
-            <input
-              name="adminKey"
-              type="password"
-              required
-              autoComplete="off"
-              className="mt-1.5 w-full h-10 rounded-md bg-background border border-border px-3 text-sm outline-none focus:border-accent"
-            />
-          </label>
           {state.error && (
             <p role="alert" className="text-sm rounded-md border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 px-3 py-2">
               {state.error}

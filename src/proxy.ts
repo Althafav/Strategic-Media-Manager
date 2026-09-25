@@ -1,5 +1,5 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
+import { SESSION_COOKIE, verifyActiveSession, verifySessionToken } from "@/lib/auth";
 import { recordView } from "@/lib/shares";
 
 // /api/sync is called by Vercel Cron and checks its own CRON_SECRET.
@@ -12,7 +12,7 @@ const SHARE_APIS = ["/api/thumb/", "/api/cover/", "/api/download/", "/api/manife
 // Session cookie scoped to /s/<token>: a share link's views count once per browser session, not per refresh.
 const VIEWED_COOKIE = "smm_viewed";
 
-export function proxy(request: NextRequest, event: NextFetchEvent) {
+export async function proxy(request: NextRequest, event: NextFetchEvent) {
   const { pathname, search } = request.nextUrl;
   const share = pathname.match(/^\/s\/([A-Za-z0-9_-]{16,64})(?:\/|$)/);
   if (share && !request.cookies.has(VIEWED_COOKIE)) {
@@ -25,14 +25,21 @@ export function proxy(request: NextRequest, event: NextFetchEvent) {
   }
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return NextResponse.next();
   if (request.nextUrl.searchParams.has("t") && SHARE_APIS.some((p) => pathname.startsWith(p))) return NextResponse.next();
-  if (verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value)) return NextResponse.next();
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  if (await verifyActiveSession(token)) return NextResponse.next();
+  // Valid signature but no longer active: an SSO user the admin removed. Drop the cookie.
+  const removed = verifySessionToken(token) !== null;
 
-  if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ error: "Not logged in" }, { status: 401 });
+  const res = pathname.startsWith("/api/") ? NextResponse.json({ error: "Not logged in" }, { status: 401 }) : NextResponse.redirect(loginUrl());
+  if (removed) res.cookies.delete(SESSION_COOKIE);
+  return res;
+
+  function loginUrl() {
+    const login = new URL("/login", request.url);
+    if (removed) login.searchParams.set("error", "sso_denied");
+    else if (pathname !== "/") login.searchParams.set("next", pathname + search);
+    return login;
   }
-  const login = new URL("/login", request.url);
-  if (pathname !== "/") login.searchParams.set("next", pathname + search);
-  return NextResponse.redirect(login);
 }
 
 export const config = {

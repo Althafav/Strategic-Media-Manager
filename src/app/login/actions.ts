@@ -15,7 +15,7 @@ export async function login(_prev: LoginState, form: FormData): Promise<LoginSta
     return { error: "Email or password is incorrect.", email };
   }
 
-  (await cookies()).set(SESSION_COOKIE, createSessionToken(), SESSION_COOKIE_OPTIONS);
+  (await cookies()).set(SESSION_COOKIE, createSessionToken({ role: "admin" }), SESSION_COOKIE_OPTIONS);
   redirect(safeNext(form.get("next")));
 }
 

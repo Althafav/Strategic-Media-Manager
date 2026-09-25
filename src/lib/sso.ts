@@ -5,9 +5,9 @@ import { headers } from "next/headers";
  * The broker signs the user in with Entra ID, then redirects to RedirectUrl with the email appended,
  * so RedirectUrl must end in "?email=". Its firewall rejects localhost redirects: test on a deployed URL.
  *
- * The returned email is NOT signed (accepted trade-off). What limits abuse: the SSO_ALLOWED_EMAILS
- * allowlist, and a short-lived state cookie set by /api/auth/sso, so a crafted /sso-login link
- * does nothing unless that browser just started a login itself.
+ * The returned email is NOT signed (accepted trade-off). What limits abuse: only emails the admin added
+ * on /users (app_users, lib/users.ts) get in, and a short-lived state cookie set by /api/auth/sso,
+ * so a crafted /sso-login link does nothing unless that browser just started a login itself.
  */
 const DEFAULT_LOGIN_URL = "https://sso-authenticate.aimcongress.com/Account/Login";
 
@@ -25,10 +25,4 @@ export async function appBaseUrl(): Promise<string> {
 export async function ssoLoginUrl(): Promise<string> {
   const redirect = `${await appBaseUrl()}/sso-login?email=`;
   return `${process.env.SSO_LOGIN_URL ?? DEFAULT_LOGIN_URL}?RedirectUrl=${encodeURIComponent(redirect)}`;
-}
-
-export function isAllowedSsoEmail(email: string): boolean {
-  const allowed = (process.env.SSO_ALLOWED_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase());
-  const e = email.trim().toLowerCase();
-  return e !== "" && allowed.includes(e);
 }

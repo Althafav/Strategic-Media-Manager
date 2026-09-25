@@ -1,8 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { isAllowedUser } from "@/lib/users";
 
 /**
- * One shared team login (AUTH_EMAIL / AUTH_PASSWORD), kept in a signed, httpOnly cookie.
+ * Session in a signed, httpOnly cookie: the admin (AUTH_EMAIL / AUTH_PASSWORD) or an SSO team member.
  * The signing key includes the password, so changing AUTH_PASSWORD or AUTH_SECRET logs everyone out.
  */
 export const SESSION_COOKIE = "smm_session";
@@ -47,32 +48,61 @@ export function checkCredentials(email: string, password: string): boolean {
   return emailOk && passwordOk;
 }
 
-/** `email` is set for Microsoft SSO logins; the shared password login has none. */
-export function createSessionToken(email?: string): string {
+/**
+ * admin: the email/password login (AUTH_EMAIL / AUTH_PASSWORD). Manages users and events.
+ * user: a team member who signed in with Microsoft SSO; `email` must stay in app_users (checked in proxy.ts).
+ */
+export type Role = "admin" | "user";
+export type Session = { role: Role; email?: string };
+
+export function createSessionToken(session: Session): string {
   const key = signingKey();
   if (!key) throw new Error("AUTH_SECRET and AUTH_PASSWORD must be set.");
-  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + SESSION_MAX_AGE * 1000, email })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + SESSION_MAX_AGE * 1000, ...session })).toString("base64url");
   return `${payload}.${sign(payload, key)}`;
 }
 
-export function verifySessionToken(token: string | undefined): boolean {
+export function verifySessionToken(token: string | undefined): Session | null {
   const key = signingKey();
-  if (!key || !token) return false;
+  if (!key || !token) return null;
   const [payload, signature] = token.split(".");
-  if (!payload || !signature || !safeEqual(signature, sign(payload, key))) return false;
+  if (!payload || !signature || !safeEqual(signature, sign(payload, key))) return null;
   try {
-    const { exp } = JSON.parse(Buffer.from(payload, "base64url").toString());
-    return typeof exp === "number" && exp > Date.now();
+    const { exp, role, email } = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (typeof exp !== "number" || exp <= Date.now()) return null;
+    const mail = typeof email === "string" && email ? email : undefined;
+    // Tokens from before roles existed: SSO ones carry an email, password ones don't.
+    const r: Role = role === "admin" || role === "user" ? role : mail ? "user" : "admin";
+    if (r === "user" && !mail) return null;
+    return { role: r, email: mail };
   } catch {
-    return false;
+    return null;
   }
 }
 
-export async function getSession(): Promise<boolean> {
-  return verifySessionToken((await cookies()).get(SESSION_COOKIE)?.value);
+/** Signature + expiry, plus: an SSO user removed from app_users loses access (within the users cache TTL). */
+export async function verifyActiveSession(token: string | undefined): Promise<Session | null> {
+  const session = verifySessionToken(token);
+  if (session?.role !== "user") return session;
+  return (await isAllowedUser(session.email).catch(() => false)) ? session : null; // fail closed
+}
+
+export async function getSession(): Promise<Session | null> {
+  return verifyActiveSession((await cookies()).get(SESSION_COOKIE)?.value);
+}
+
+export async function isAdmin(): Promise<boolean> {
+  return (await getSession())?.role === "admin";
 }
 
 /** For server actions: returns an error message when not logged in, null otherwise. */
 export async function requireSession(): Promise<string | null> {
   return (await getSession()) ? null : "Your session has expired. Log in again.";
+}
+
+/** For admin-only server actions: returns an error message unless the admin is logged in. */
+export async function requireAdmin(): Promise<string | null> {
+  const session = await getSession();
+  if (!session) return "Your session has expired. Log in again.";
+  return session.role === "admin" ? null : "Only the admin can do this.";
 }

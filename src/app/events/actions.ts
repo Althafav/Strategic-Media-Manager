@@ -3,8 +3,7 @@
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { checkAdminKey } from "@/lib/admin";
-import { requireSession } from "@/lib/auth";
+import { requireAdmin, requireSession } from "@/lib/auth";
 import { createEvent, deleteEvent, getEvent } from "@/lib/events";
 import { runDeltaSync, SyncBusyError } from "@/lib/sync/delta-sync";
 import { describeSyncError } from "@/lib/sync/status";
@@ -16,7 +15,7 @@ export async function addEvent(_prev: AddEventState, form: FormData): Promise<Ad
   const shareUrl = String(form.get("shareUrl") ?? "");
   const values = { title, shareUrl };
 
-  const denied = (await requireSession()) ?? checkAdminKey(form.get("adminKey"));
+  const denied = await requireAdmin();
   if (denied) return { error: denied, values };
   if (!title.trim()) return { error: "Give the event a name.", values };
 
@@ -62,7 +61,7 @@ export type RemoveEventState = { error?: string };
 
 /** Removes the event and its search index. Files in OneDrive are not touched. */
 export async function removeEvent(_prev: RemoveEventState, form: FormData): Promise<RemoveEventState> {
-  const denied = (await requireSession()) ?? checkAdminKey(form.get("adminKey"));
+  const denied = await requireAdmin();
   if (denied) return { error: denied };
   const removed = await deleteEvent(String(form.get("slug") ?? ""));
   if (!removed) return { error: "Event not found. It may already have been removed." };

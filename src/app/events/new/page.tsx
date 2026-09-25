@@ -1,12 +1,15 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
+import { isAdmin } from "@/lib/auth";
 import { AddEventForm } from "./add-event-form";
 
 export const metadata = { title: "Add event · Strategic Media Manager" };
 
 export const maxDuration = 300; // the new event's first index sync runs after the response
 
-export default function NewEventPage() {
+export default async function NewEventPage() {
+  if (!(await isAdmin())) notFound();
   return (
     <div className="max-w-xl pt-6">
       <Link href="/" className="text-sm text-subtle hover:text-foreground inline-flex items-center gap-1">

@@ -1,11 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Link2, LogOut, Search } from "lucide-react";
+import { Link2, LogOut, Search, Users } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { getSession } from "@/lib/auth";
 
 export async function Header() {
-  const loggedIn = await getSession();
+  const session = await getSession();
+  const loggedIn = !!session;
   const logo = (
     <>
       <Image src="/mark.png" alt="" width={28} height={28} className="rounded-[5px]" priority />
@@ -23,7 +24,7 @@ export async function Header() {
         ) : (
           <span className="flex items-center gap-2.5 shrink-0">{logo}</span>
         )}
-        {loggedIn && (
+        {session && (
           <>
             <form action="/search" className="flex-1 max-w-xl ml-auto relative">
               <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-subtle" aria-hidden />
@@ -44,9 +45,19 @@ export async function Header() {
                 <Link2 className="size-4" />
                 <span className="hidden md:inline">Shared links</span>
               </Link>
+              {session.role === "admin" && (
+                <Link
+                  href="/users"
+                  title="Users"
+                  className="h-9 px-2.5 rounded-md text-sm text-subtle hover:text-foreground hover:bg-background inline-flex items-center gap-2"
+                >
+                  <Users className="size-4" />
+                  <span className="hidden md:inline">Users</span>
+                </Link>
+              )}
               <form action={logout}>
                 <button
-                  title="Log out"
+                  title={`Log out ${session.email ?? "admin"}`}
                   className="h-9 px-2.5 rounded-md text-sm text-subtle hover:text-foreground hover:bg-background inline-flex items-center gap-2"
                 >
                   <LogOut className="size-4" />

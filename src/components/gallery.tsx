@@ -18,6 +18,8 @@ type Props = {
   downloadAll?: Ref[];
   /** Team pages: show "Share" for the selection, and keep the selection while moving between folders. */
   canShare?: boolean;
+  /** Photo details panel in the lightbox (admin only). */
+  showDetails?: boolean;
   /** Base URL for subfolder links, e.g. `/s/<token>/<path>` on share pages. Defaults to the event's browse URL. */
   base?: string;
   folderName: string;
@@ -28,7 +30,7 @@ type Props = {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-export function Gallery({ path, folder, downloadAll, canShare, base, folderName, items, listedOrder }: Props) {
+export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder }: Props) {
   const [sort, setSort] = useStoredSort(listedOrder ? "smm:sort:listed" : "smm:sort", listedOrder ? "listed" : "name-asc");
   const [filter, setFilter] = useState<FileKind | "all">("all");
   const allFiles = useMemo(() => items.filter((i) => i.kind === "file"), [items]);
@@ -262,6 +264,7 @@ export function Gallery({ path, folder, downloadAll, canShare, base, folderName,
           onIndex={setOpen}
           onClose={() => setOpen(null)}
           share={canShare ? { folderId: folder?.id, folderPath: path } : undefined}
+          showDetails={showDetails}
         />
       )}
     </>

@@ -40,10 +40,6 @@ export function AddEventForm() {
         </span>
       </label>
 
-      <label className="block">
-        <span className="text-sm font-medium">Admin key</span>
-        <input name="adminKey" type="password" required autoComplete="off" className={`${input} mt-1.5`} />
-      </label>
 
       {state.error && (
         <p role="alert" className="text-sm rounded-md border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 px-3 py-2">

@@ -16,12 +16,14 @@ type Props = {
   size: number | null;
   /** Search index status; missing when it couldn't be read. */
   sync?: SyncStatus;
+  /** Admin only. */
+  canRemove?: boolean;
 };
 
 const REVEAL = "[@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-within:opacity-100";
 
 /** One event as a wide sheet: the cover photo leads, the title sits beside it in condensed type. */
-export function EventCard({ slug, title, rootId, itemCount, size, sync }: Props) {
+export function EventCard({ slug, title, rootId, itemCount, size, sync, canRemove = false }: Props) {
   const [hasCover, setHasCover] = useState(!!rootId);
   const count = itemCount ?? 0;
   const needsAttention = sync?.state === "error" || sync?.state === "stale";
@@ -58,7 +60,7 @@ export function EventCard({ slug, title, rootId, itemCount, size, sync }: Props)
           except "Sync now", which stays visible when the index needs attention. */}
       <div className="absolute top-3 right-3 flex items-start gap-2">
         <SyncEventButton slug={slug} title={title} revealClass={needsAttention ? "" : REVEAL} />
-        <RemoveEventButton slug={slug} title={title} className={REVEAL} />
+        {canRemove && <RemoveEventButton slug={slug} title={title} className={REVEAL} />}
       </div>
     </div>
   );

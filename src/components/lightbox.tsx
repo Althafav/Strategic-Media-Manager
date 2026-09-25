@@ -30,6 +30,8 @@ type Props = {
   onIndex: (i: number) => void;
   onClose: () => void;
   share?: LightboxShare;
+  /** Details panel (name, camera, size…): admin only. */
+  showDetails?: boolean;
 };
 
 type ZoomCommand = "toggle" | "in" | "out" | "reset";
@@ -39,7 +41,7 @@ const INFO_KEY = "smm:lightbox-info";
 
 const dateTimeFmt = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" });
 
-export function Lightbox({ items, index, onIndex, onClose, share }: Props) {
+export function Lightbox({ items, index, onIndex, onClose, share, showDetails = false }: Props) {
   const item = items[index];
   const root = useRef<HTMLDivElement>(null);
   const zoom = useRef<((cmd: ZoomCommand) => void) | null>(null);
@@ -95,7 +97,7 @@ export function Lightbox({ items, index, onIndex, onClose, share }: Props) {
           break;
         case "i":
         case "I":
-          toggleInfo();
+          if (showDetails) toggleInfo();
           break;
         case "z":
         case "Z":
@@ -202,9 +204,11 @@ export function Lightbox({ items, index, onIndex, onClose, share }: Props) {
             {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
           </button>
         )}
-        <button aria-label="Details" title="Details (I)" aria-pressed={info} onClick={toggleInfo} className={iconButton}>
-          <Info className="size-4" />
-        </button>
+        {showDetails && (
+          <button aria-label="Details" title="Details (I)" aria-pressed={info} onClick={toggleInfo} className={iconButton}>
+            <Info className="size-4" />
+          </button>
+        )}
         {canFullscreen && (
           <button
             aria-label={fullscreen ? "Exit full screen" : "Full screen"}
@@ -244,7 +248,7 @@ export function Lightbox({ items, index, onIndex, onClose, share }: Props) {
             </div>
           )}
         </div>
-        {info && <InfoPanel item={item} />}
+        {showDetails && info && <InfoPanel item={item} />}
       </div>
     </div>
   );

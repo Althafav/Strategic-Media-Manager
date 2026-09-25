@@ -1,4 +1,5 @@
 import { Gallery } from "@/components/gallery";
+import { isAdmin } from "@/lib/auth";
 import { db, isIndexConfigured } from "@/lib/db";
 import { listEvents } from "@/lib/events";
 import { thumbSrc } from "@/lib/format";
@@ -50,7 +51,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
         {items.length === 300 && <p className="text-subtle text-sm mt-1">Showing the first 300 matches. Refine your search to narrow down.</p>}
       </div>
       {items.length ? (
-        <Gallery path={[]} folderName={`Search ${q}`} items={items} listedOrder="Relevance" canShare />
+        <Gallery path={[]} folderName={`Search ${q}`} items={items} listedOrder="Relevance" canShare showDetails={await isAdmin()} />
       ) : (
         <p className="py-24 text-center text-subtle">No file or folder names contain &ldquo;{q}&rdquo;. Try a shorter part of the name.</p>
       )}
