@@ -1,7 +1,8 @@
+import { after } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getEvent } from "@/lib/events";
 import { buildManifest, isValidId, NotFoundError, type ManifestEntry } from "@/lib/onedrive/client";
-import { getActiveShare, signItem, verifyItem } from "@/lib/shares";
+import { getActiveShare, recordDownload, signItem, verifyItem } from "@/lib/shares";
 
 type Ref = { event: string; id: string; sig?: string };
 
@@ -29,6 +30,8 @@ export async function POST(req: Request) {
       await buildManifest(active.event.share_url, active.event.slug, refs.map((r) => r.id), files);
       // Everything listed is inside the shared folder; sign it so expired download URLs can be refreshed.
       for (const f of files) Object.assign(f, { t: token, sig: signItem(token, f.id) });
+      // A zip download starts here. Counted once, even if the visitor cancels it part-way.
+      after(() => recordDownload(token, files.length).catch(() => {}));
       return Response.json({ files }, { headers: { "cache-control": "no-store" } });
     }
 

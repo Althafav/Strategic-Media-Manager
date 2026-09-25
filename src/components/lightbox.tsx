@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import type { MediaItem } from "@/lib/onedrive/types";
-import { browseHref, cleanName, downloadHref, formatBytes, resizedPreview } from "@/lib/format";
+import { browseHref, cleanName, downloadHref, formatBytes, resizedPreview, streamHref } from "@/lib/format";
 import { ShareItemsButton } from "./share-items-button";
 
 /** Team pages pass where "Share" links are created from; share-link visitors can't share. */
@@ -324,7 +324,7 @@ function Media({ item, zoomRef, onZoomed, onSwipe, onClose, onEnded }: MediaProp
     return (
       <div className={center}>
         <video
-          src={downloadHref(item)}
+          src={streamHref(item)}
           poster={item.preview}
           controls
           autoPlay

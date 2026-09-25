@@ -82,6 +82,12 @@ export async function recordView(token: string) {
   await db().rpc("touch_share", { tok: token });
 }
 
+/** One download from a share link (a file, or a zip of `files` files). Fails before migration 0006; callers ignore that. */
+export async function recordDownload(token: string, files = 1) {
+  const { error } = await db().rpc("record_share_download", { tok: token, files });
+  if (error) throw error;
+}
+
 function signingKey() {
   const secret = process.env.AUTH_SECRET;
   if (!secret) throw new Error("AUTH_SECRET must be set to use share links.");

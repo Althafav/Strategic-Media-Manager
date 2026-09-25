@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CopyLinkButton, RevokeLinkButton, ShareStatus } from "@/components/share-link-actions";
 import { listEvents } from "@/lib/events";
 import { browseHref, cleanName } from "@/lib/format";
-import { formatDate, isItemShare } from "@/lib/share-types";
+import { downloadSummary, formatDate, isItemShare } from "@/lib/share-types";
 import { listShares } from "@/lib/shares";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +66,12 @@ export default async function SharesPage() {
                   </p>
                   <p>{s.last_viewed_at ? `Last ${formatDate(s.last_viewed_at)}` : "Not opened yet"}</p>
                 </div>
+                {downloadSummary(s) && (
+                  <div className="text-xs text-subtle w-40">
+                    <p>{downloadSummary(s)}</p>
+                    <p>{s.last_downloaded_at ? `Last ${formatDate(s.last_downloaded_at)}` : "Nothing downloaded yet"}</p>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <CopyLinkButton token={s.token} label="Copy link" />
                   <RevokeLinkButton id={s.id} />

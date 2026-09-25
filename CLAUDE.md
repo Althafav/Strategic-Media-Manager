@@ -85,6 +85,9 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
    - Any new UI that passes item refs around must keep `t`/`sig` (use the `Ref` type from `format.ts`).
    - `proxy.ts` lets `/s/*` through, and lets media APIs through only when `t` is present.
    - Views are counted once per browser session via a session cookie scoped to `/s/<token>`.
+   - Downloads are counted per click (`recordDownload`, migration 0006): `/api/download` redirects with `t`, and
+     `/api/manifest` with `t` (one zip, plus its file count). Not counted: `?json=1` URL refreshes, and `?stream=1`
+     (`streamHref`, the lightbox video player). Keep new playback uses on `streamHref`.
    - `getActiveShare` caches for 15s per instance, so revocation may lag up to 15s across servers.
    - Share lookups must fail closed (`.catch(() => null)`).
 4. `next` redirect targets must be same-site relative paths (`safeNext` in `login/actions.ts`).
@@ -120,7 +123,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)

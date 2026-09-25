@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Link2, Loader2, Share2, X } from "lucide-react";
 import { createShareLink, type CreateShareState } from "@/app/shares/actions";
-import { EXPIRY_OPTIONS, isItemShare, type ShareRow } from "@/lib/share-types";
+import { downloadSummary, EXPIRY_OPTIONS, isItemShare, type ShareRow } from "@/lib/share-types";
 import { copyText, CopyLinkButton, RevokeLinkButton, shareUrl, ShareStatus } from "./share-link-actions";
 
 type Props = {
@@ -58,6 +58,7 @@ export function ShareFolderButton({ event, folderId, folderPath, folderName, sha
                         <p className="font-medium text-sm truncate">{s.label || "Unnamed link"}</p>
                         <p className="text-subtle">
                           <ShareStatus share={s} />, {s.view_count} {s.view_count === 1 ? "view" : "views"}
+                          {downloadSummary(s) && `, ${downloadSummary(s)}`}
                         </p>
                       </div>
                       <CopyLinkButton token={s.token} />
