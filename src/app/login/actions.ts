@@ -2,15 +2,9 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { checkCredentials, createSessionToken, SESSION_COOKIE, SESSION_MAX_AGE } from "@/lib/auth";
+import { checkCredentials, createSessionToken, safeNext, SESSION_COOKIE, SESSION_COOKIE_OPTIONS } from "@/lib/auth";
 
 export type LoginState = { error?: string; email?: string };
-
-/** Only same-site relative paths, so `?next=` can't be used as an open redirect. */
-function safeNext(value: FormDataEntryValue | null) {
-  const next = String(value ?? "");
-  return next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
-}
 
 export async function login(_prev: LoginState, form: FormData): Promise<LoginState> {
   const email = String(form.get("email") ?? "");
@@ -21,13 +15,7 @@ export async function login(_prev: LoginState, form: FormData): Promise<LoginSta
     return { error: "Email or password is incorrect.", email };
   }
 
-  (await cookies()).set(SESSION_COOKIE, createSessionToken(), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-  });
+  (await cookies()).set(SESSION_COOKIE, createSessionToken(), SESSION_COOKIE_OPTIONS);
   redirect(safeNext(form.get("next")));
 }
 

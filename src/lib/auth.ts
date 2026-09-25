@@ -8,6 +8,20 @@ import { cookies } from "next/headers";
 export const SESSION_COOKIE = "smm_session";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days, in seconds
 
+export const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: "/",
+  maxAge: SESSION_MAX_AGE,
+} as const;
+
+/** Only same-site relative paths, so `?next=` can't be used as an open redirect. */
+export function safeNext(value: unknown): string {
+  const next = String(value ?? "");
+  return next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+}
+
 function safeEqual(a: string, b: string) {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
@@ -33,10 +47,11 @@ export function checkCredentials(email: string, password: string): boolean {
   return emailOk && passwordOk;
 }
 
-export function createSessionToken(): string {
+/** `email` is set for Microsoft SSO logins; the shared password login has none. */
+export function createSessionToken(email?: string): string {
   const key = signingKey();
   if (!key) throw new Error("AUTH_SECRET and AUTH_PASSWORD must be set.");
-  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + SESSION_MAX_AGE * 1000 })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + SESSION_MAX_AGE * 1000, email })).toString("base64url");
   return `${payload}.${sign(payload, key)}`;
 }
 

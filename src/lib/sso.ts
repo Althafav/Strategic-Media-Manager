@@ -5,10 +5,14 @@ import { headers } from "next/headers";
  * The broker signs the user in with Entra ID, then redirects to RedirectUrl with the email appended,
  * so RedirectUrl must end in "?email=". Its firewall rejects localhost redirects: test on a deployed URL.
  *
- * TEST ONLY: the callback's ?email= is not signed, so it must not create a session until the broker
- * sends something we can verify (signed token or one-time code).
+ * The returned email is NOT signed (accepted trade-off). What limits abuse: the SSO_ALLOWED_EMAILS
+ * allowlist, and a short-lived state cookie set by /api/auth/sso, so a crafted /sso-login link
+ * does nothing unless that browser just started a login itself.
  */
 const DEFAULT_LOGIN_URL = "https://sso-authenticate.aimcongress.com/Account/Login";
+
+export const SSO_STATE_COOKIE = "smm_sso";
+export const SSO_STATE_MAX_AGE = 60 * 10; // seconds to complete the Microsoft sign-in
 
 export async function appBaseUrl(): Promise<string> {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/+$/, "");
@@ -23,13 +27,8 @@ export async function ssoLoginUrl(): Promise<string> {
   return `${process.env.SSO_LOGIN_URL ?? DEFAULT_LOGIN_URL}?RedirectUrl=${encodeURIComponent(redirect)}`;
 }
 
-export function allowedSsoEmails(): string[] {
-  return (process.env.SSO_ALLOWED_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-}
-
 export function isAllowedSsoEmail(email: string): boolean {
-  return allowedSsoEmails().includes(email.trim().toLowerCase());
+  const allowed = (process.env.SSO_ALLOWED_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase());
+  const e = email.trim().toLowerCase();
+  return e !== "" && allowed.includes(e);
 }
