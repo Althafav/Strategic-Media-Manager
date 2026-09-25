@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Strategic Media Manager
 
-## Getting Started
+Browse, search, preview and download event media stored in a OneDrive "Anyone with the link" share. OneDrive is the only file storage. This app reads metadata and never copies files.
 
-First, run the development server:
+## How it works
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+| Concern | Approach |
+| --- | --- |
+| Events | Each event is a row in Supabase `events` with its own share link. Add at `/events/new`, remove with the trash icon on the event card (both need `ADMIN_KEY`) |
+| Share links | **Share** on any folder creates a private link (`/s/<token>`) for people outside the team: view + download that folder and its subfolders only, no login. Pick an expiry (7/30/90 days or never); manage and revoke at `/shares`. To share only some photos, select them and click **Share** in the selection bar (works in folders and search results; one photo opens as a large view). Needs migrations `0003_shares.sql` and `0004_share_items.sql` |
+| Access | `src/lib/onedrive/session.ts`: share link → guest cookie → `RenderListDataAsStream` → `driveAccessToken` (~5h, auto-refreshed) → OneDrive v2.0 drive API |
+| Browse | Live folder listings (`getFolder`), cached in memory for 5 min |
+| Thumbnails / previews | Pre-signed OneDrive transform URLs, loaded directly by the browser |
+| Single download | `/api/download/[id]` issues a 302 to a pre-authenticated OneDrive URL, so bytes never touch our server |
+| Folder / selection download | `/api/manifest` returns direct URLs; the browser streams them into a zip (`client-zip`) and writes it to disk via the File System Access API |
+| Search | Supabase index filled by the OneDrive **delta** feed (`src/lib/sync/delta-sync.ts`), resumable and incremental |
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> The guest-link API is not an official Microsoft API. If AIM IT later grants an Entra app, swap `session.ts` for Graph app-only auth; nothing else needs to change.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Create a Supabase project and run the SQL files in `supabase/migrations/` in order, in the SQL editor.
+2. Create `.env.local`:
 
-## Learn More
+   ```bash
+   SUPABASE_URL=...
+   SUPABASE_SERVICE_ROLE_KEY=...
+   ADMIN_KEY=...      # required to add or remove events
+   AUTH_EMAIL=admin@strategic.ae   # shared team login
+   AUTH_PASSWORD=...  # changing it logs everyone out
+   AUTH_SECRET=...    # random 32+ chars, signs the session cookie
+   CRON_SECRET=...    # protects /api/sync
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+3. `npm install && npm run dev`, then use **Add event** and paste a OneDrive folder link shared with "Anyone with the link".
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+A new event is indexed for search in the background right after it is added. `npm run sync` syncs every event from the CLI: the first pass takes about 3 min per 23k items, and later runs fetch only changes.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+In production, Vercel Cron calls `/api/sync`. The 30-minute schedule in `vercel.json` needs the Pro plan; on Hobby, use a daily schedule.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Removing an event deletes it and its search index from the app only. Files in OneDrive are never modified.

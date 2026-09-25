@@ -1,26 +1,70 @@
 @import "tailwindcss";
 
+/*
+ * "Light table": a neutral viewing grey (no warm or cool cast, so photo colour reads true),
+ * white working surfaces and ink type. Brand gold is reserved for one thing: the
+ * grease-pencil selection mark. Primary actions are ink.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: #e4e5e6; /* viewing grey */
+  --surface: #ffffff; /* panels, bars */
+  --muted: #d5d7d9; /* photo placeholders, hovers */
+  --border: #c6c9cc;
+  --foreground: #1c1d1f; /* ink */
+  --subtle: #5c5f64;
+  --accent: #1c1d1f; /* primary actions use ink */
+  --accent-foreground: #ffffff;
+  --pencil: #c99e2f; /* brand gold, grease-pencil marks only */
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-pencil: var(--pencil);
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Condensed Archivo for titles, like the lettering on a film edge. */
+@utility display {
+  font-stretch: 70%;
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
+
+/* Grease-pencil selection mark: drawn on when a photo is chosen. */
+.pencil-stroke {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: pencil-draw 260ms cubic-bezier(0.3, 0.7, 0.4, 1) forwards;
+}
+@keyframes pencil-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pencil-stroke {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
 }

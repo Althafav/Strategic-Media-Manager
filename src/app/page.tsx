@@ -1,69 +1,51 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Plus } from "lucide-react";
+import { EventCard } from "@/components/event-card";
+import { isIndexConfigured } from "@/lib/db";
+import { listEvents } from "@/lib/events";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  if (!isIndexConfigured()) {
+    return (
+      <div className="py-24 text-center">
+        <h1 className="display text-3xl">Database not configured</h1>
+        <p className="text-subtle mt-2">Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to manage events.</p>
+      </div>
+    );
+  }
+  const events = await listEvents();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <>
+      <div className="pt-10 pb-6 flex flex-wrap items-end gap-4">
+        <h1 className="display text-5xl flex-1">Events</h1>
+        <Link
+          href="/events/new"
+          className="h-9 px-3 rounded-md border border-foreground text-sm font-medium inline-flex items-center gap-2 hover:bg-surface"
+        >
+          <Plus className="size-4" /> Add event
+        </Link>
+      </div>
+
+      {events.length ? (
+        <section className="grid gap-4">
+          {events.map((e) => (
+            <EventCard key={e.id} slug={e.slug} title={e.title} rootId={e.root_id} itemCount={e.item_count} size={e.size} />
+          ))}
+        </section>
+      ) : (
+        <div className="py-24 text-center">
+          <p className="display text-3xl">No events yet</p>
+          <p className="text-subtle mt-2">
+            Add an event by pasting the OneDrive link to its photo folder.{" "}
+            <Link href="/events/new" className="text-foreground underline underline-offset-4">
+              Add event
+            </Link>
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      )}
+    </>
   );
 }
