@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Check, Download, FileText, Folder, Play, X } from "lucide-react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ArrowDownUp, Check, Download, FileText, Folder, Play, X } from "lucide-react";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { browseHref, cleanName, coverSrc, downloadHref, folderHref, formatBytes, itemKey, type Ref } from "@/lib/format";
+import { getSelection, getServerSelection, setSelection, subscribeSelection, type Selection } from "@/lib/selection-store";
 import { downloadAsZip, type ZipProgress } from "@/lib/zip-download";
 import { Lightbox } from "./lightbox";
 import { ShareItemsButton } from "./share-items-button";
@@ -15,27 +16,38 @@ type Props = {
   folder?: Ref;
   /** What "Download all" zips when there's no folder, e.g. the picked items of a share link. */
   downloadAll?: Ref[];
-  /** Team pages: show "Share" for the selection. */
+  /** Team pages: show "Share" for the selection, and keep the selection while moving between folders. */
   canShare?: boolean;
   /** Base URL for subfolder links, e.g. `/s/<token>/<path>` on share pages. Defaults to the event's browse URL. */
   base?: string;
   folderName: string;
   items: MediaItem[];
+  /** Label for the order `items` arrive in when it isn't by name, e.g. "Relevance" for search results. */
+  listedOrder?: string;
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-export function Gallery({ path, folder, downloadAll, canShare, base, folderName, items }: Props) {
-  const folders = useMemo(() => items.filter((i) => i.kind === "folder"), [items]);
-  const files = useMemo(() => items.filter((i) => i.kind === "file"), [items]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+export function Gallery({ path, folder, downloadAll, canShare, base, folderName, items, listedOrder }: Props) {
+  const [sort, setSort] = useStoredSort(listedOrder ? "smm:sort:listed" : "smm:sort", listedOrder ? "listed" : "name-asc");
+  const [filter, setFilter] = useState<FileKind | "all">("all");
+  const allFiles = useMemo(() => items.filter((i) => i.kind === "file"), [items]);
+  const folders = useMemo(() => sortItems(items.filter((i) => i.kind === "folder"), sort), [items, sort]);
+  const files = useMemo(
+    () => sortItems(filter === "all" ? allFiles : allFiles.filter((i) => kindOf(i) === filter), sort),
+    [allFiles, filter, sort],
+  );
+  const kinds = useMemo(() => countKinds(allFiles), [allFiles]);
+  const { selected, selectedItems, setSelected } = useSelection(!!canShare, items, path);
   const [open, setOpen] = useState<number | null>(null);
   const lastClicked = useRef<number | null>(null);
   const zip = useZip();
 
   const selecting = selected.size > 0;
-  const selectedItems = items.filter((i) => selected.has(itemKey(i)));
   const selectedBytes = selectedItems.reduce((n, i) => n + i.size, 0);
+  const onThisPage = selectedItems.every((s) => items.some((i) => itemKey(i) === itemKey(s)));
+  const folderCount = new Set(selectedItems.map((i) => (i.location ?? []).join("/"))).size;
+  const allFilesHere = files.length > 0 && files.every((f) => selected.has(itemKey(f)));
 
   const toggle = useCallback(
     (index: number, list: MediaItem[], range: boolean) => {
@@ -54,7 +66,7 @@ export function Gallery({ path, folder, downloadAll, canShare, base, folderName,
       });
       lastClicked.current = index;
     },
-    [],
+    [setSelected],
   );
 
   const downloadSelected = () => {
@@ -74,22 +86,76 @@ export function Gallery({ path, folder, downloadAll, canShare, base, folderName,
 
   const summary = [
     folders.length ? plural(folders.length, "folder", "folders") : null,
-    files.length ? plural(files.length, "file", "files") : null,
+    allFiles.length ? plural(allFiles.length, "file", "files") : null,
   ]
     .filter(Boolean)
     .join(", ");
+
+  const changeFilter = (next: FileKind | "all") => {
+    setFilter(next);
+    lastClicked.current = null;
+    // Hidden files would otherwise still be downloaded or shared with the selection.
+    if (next !== "all") {
+      setSelected((prev) => new Set([...prev].filter((key) => {
+        const item = items.find((i) => itemKey(i) === key);
+        return !item || item.kind === "folder" || kindOf(item) === next;
+      })));
+    }
+  };
+
+  const changeSort = (next: SortKey) => {
+    setSort(next);
+    lastClicked.current = null;
+  };
 
   return (
     <>
       <div className="flex flex-wrap items-center gap-3 py-4">
         <p className="text-sm text-subtle tabular-nums">{summary}</p>
+        {kinds.length > 1 && (
+          <div role="group" aria-label="Show" className="flex rounded-md border border-border bg-surface p-0.5">
+            {([["all", allFiles.length], ...kinds] as const).map(([kind, count]) => (
+              <button
+                key={kind}
+                aria-pressed={filter === kind}
+                onClick={() => changeFilter(kind)}
+                className={`h-7 px-2.5 rounded-[5px] text-sm inline-flex items-center gap-1.5 ${
+                  filter === kind ? "bg-accent text-accent-foreground" : "text-subtle hover:text-foreground"
+                }`}
+              >
+                {KIND_LABELS[kind]}
+                <span className={`text-xs tabular-nums ${filter === kind ? "text-accent-foreground/70" : ""}`}>{count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {items.length > 1 && (
+          <label className="relative inline-flex items-center">
+            <span className="sr-only">Sort by</span>
+            <ArrowDownUp className="size-4 absolute left-2.5 text-subtle pointer-events-none" aria-hidden />
+            <select
+              value={sort}
+              onChange={(e) => changeSort(e.target.value as SortKey)}
+              className="h-9 pl-8 pr-3 rounded-md border border-border bg-surface text-sm hover:border-foreground cursor-pointer"
+            >
+              {listedOrder && <option value="listed">{listedOrder}</option>}
+              {SORTS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="ml-auto flex gap-2">
           {files.length > 0 && (
             <button
               className="h-9 px-3 rounded-md border border-border bg-surface text-sm hover:border-foreground"
-              onClick={() => setSelected(selecting ? new Set() : new Set(files.map(itemKey)))}
+              onClick={() =>
+                setSelected((prev) => (allFilesHere ? new Set() : new Set([...prev, ...files.map(itemKey)])))
+              }
             >
-              {selecting ? "Clear selection" : "Select all files"}
+              {allFilesHere ? "Clear selection" : `Select all ${filter === "all" ? "files" : KIND_LABELS[filter].toLowerCase()}`}
             </button>
           )}
           {everything && items.length > 0 && (
@@ -157,9 +223,15 @@ export function Gallery({ path, folder, downloadAll, canShare, base, folderName,
                   <span className="display text-2xl text-pencil tabular-nums">{selected.size}</span>
                   <span className="text-sm">selected</span>
                   {selectedBytes > 0 && <span className="text-sm text-white/60">{formatBytes(selectedBytes)}+</span>}
+                  {folderCount > 1 && <span className="text-sm text-white/60">from {folderCount} folders</span>}
                 </p>
                 {canShare && (
-                  <ShareItemsButton items={selectedItems} folderId={folder?.id} folderPath={path} folderName={folder ? folderName : undefined} />
+                  <ShareItemsButton
+                    items={selectedItems}
+                    folderId={onThisPage ? folder?.id : undefined}
+                    folderPath={path}
+                    folderName={folder && onThisPage ? folderName : undefined}
+                  />
                 )}
                 <button
                   className="h-9 px-3 rounded-md bg-pencil text-foreground text-sm font-semibold inline-flex items-center gap-2 hover:brightness-110"
@@ -183,9 +255,107 @@ export function Gallery({ path, folder, downloadAll, canShare, base, folderName,
         </div>
       )}
 
-      {open !== null && <Lightbox items={files} index={open} onIndex={setOpen} onClose={() => setOpen(null)} />}
+      {open !== null && (
+        <Lightbox
+          items={files}
+          index={open}
+          onIndex={setOpen}
+          onClose={() => setOpen(null)}
+          share={canShare ? { folderId: folder?.id, folderPath: path } : undefined}
+        />
+      )}
     </>
   );
+}
+
+type FileKind = "photo" | "video" | "other";
+type SortKey = "listed" | "name-asc" | "name-desc" | "date-asc" | "date-desc" | "size-desc" | "size-asc";
+
+const KIND_LABELS: Record<FileKind | "all", string> = { all: "All", photo: "Photos", video: "Videos", other: "Other" };
+
+const SORTS: { value: Exclude<SortKey, "listed">; label: string }[] = [
+  { value: "name-asc", label: "Name A–Z" },
+  { value: "name-desc", label: "Name Z–A" },
+  { value: "date-asc", label: "Oldest first" },
+  { value: "date-desc", label: "Newest first" },
+  { value: "size-desc", label: "Largest first" },
+  { value: "size-asc", label: "Smallest first" },
+];
+
+const kindOf = (i: MediaItem): FileKind => (i.isVideo ? "video" : i.isImage ? "photo" : "other");
+
+/** The kinds present among the files, with counts, in display order. */
+function countKinds(files: MediaItem[]): [FileKind, number][] {
+  const counts = new Map<FileKind, number>();
+  for (const f of files) counts.set(kindOf(f), (counts.get(kindOf(f)) ?? 0) + 1);
+  return (["photo", "video", "other"] as const).filter((k) => counts.has(k)).map((k) => [k, counts.get(k)!]);
+}
+
+const byName = (a: MediaItem, b: MediaItem) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+
+/** Capture time for photos/videos, else last modified. NaN when unknown. */
+const timeOf = (i: MediaItem) => Date.parse(i.takenAt ?? i.modifiedAt ?? "");
+
+function sortItems(list: MediaItem[], sort: SortKey): MediaItem[] {
+  if (sort === "listed") return list;
+  const [field, dir] = sort.split("-");
+  const sign = dir === "asc" ? 1 : -1;
+  return [...list].sort((a, b) => {
+    if (field === "date") {
+      const x = timeOf(a);
+      const y = timeOf(b);
+      // Undated items go last in either direction.
+      if (Number.isNaN(x) !== Number.isNaN(y)) return Number.isNaN(x) ? 1 : -1;
+      if (x !== y && !Number.isNaN(x)) return sign * (x - y);
+    } else if (field === "size" && a.size !== b.size) {
+      return sign * (a.size - b.size);
+    } else if (field === "name") {
+      return sign * byName(a, b);
+    }
+    return byName(a, b);
+  });
+}
+
+// Sort choice is remembered per browser. useSyncExternalStore keeps the server render on the fallback, so hydration matches.
+const SORT_EVENT = "smm:sort-change";
+const subscribeSort = (onChange: () => void) => {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(SORT_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(SORT_EVENT, onChange);
+  };
+};
+
+function useStoredSort(storageKey: string, fallback: SortKey): [SortKey, (next: SortKey) => void] {
+  const stored = useSyncExternalStore(
+    subscribeSort,
+    () => {
+      try {
+        return localStorage.getItem(storageKey);
+      } catch {
+        return null;
+      }
+    },
+    () => null,
+  );
+  const valid = stored === fallback || SORTS.some((s) => s.value === stored);
+  const set = (next: SortKey) => {
+    try {
+      localStorage.setItem(storageKey, next);
+    } catch {
+      // Storage blocked: the choice still applies until the page changes.
+    }
+    window.dispatchEvent(new Event(SORT_EVENT));
+  };
+  const [fallbackChoice, setFallbackChoice] = useState<SortKey | null>(null);
+  return [
+    valid ? (stored as SortKey) : (fallbackChoice ?? fallback),
+    (next) => {
+      setFallbackChoice(next);
+      set(next);
+    },
+  ];
 }
 
 /** Loose grease-pencil loop drawn around a chosen frame, the way picks are marked on a contact sheet. */
@@ -326,6 +496,44 @@ function ZipStatus({ progress, onCancel }: { progress: ZipProgress; onCancel: ()
       </div>
     </div>
   );
+}
+
+/**
+ * Selected items by key. Team pages keep the selection in the shared store so it carries across folders and
+ * search; share pages keep it per page. Items are stored with their folder (`location`) so a later share or
+ * download from another page still knows where each one came from.
+ */
+function useSelection(persist: boolean, items: MediaItem[], path: string[]) {
+  const stored = useSyncExternalStore(subscribeSelection, getSelection, getServerSelection);
+  const [local, setLocal] = useState<Selection>(new Map());
+  const picked = persist ? stored : local;
+
+  const setSelected = useCallback(
+    (update: (prev: Set<string>) => Set<string>) => {
+      const rebuild = (prev: Selection) => {
+        const next = new Map<string, MediaItem>();
+        for (const key of update(new Set(prev.keys()))) {
+          const known = prev.get(key);
+          const here = items.find((i) => itemKey(i) === key);
+          const item = known ?? (here && { ...here, location: here.location ?? path });
+          if (item) next.set(key, item);
+        }
+        return next;
+      };
+      if (persist) setSelection(rebuild(getSelection()));
+      else setLocal(rebuild);
+    },
+    [persist, items, path],
+  );
+
+  return {
+    selected: useMemo(() => new Set(picked.keys()), [picked]),
+    selectedItems: useMemo(() => [...picked.values()], [picked]),
+    setSelected: useCallback(
+      (next: Set<string> | ((prev: Set<string>) => Set<string>)) => setSelected(typeof next === "function" ? next : () => next),
+      [setSelected],
+    ),
+  };
 }
 
 function useZip() {

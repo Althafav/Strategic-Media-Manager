@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { EventCard } from "@/components/event-card";
 import { isIndexConfigured } from "@/lib/db";
 import { listEvents } from "@/lib/events";
+import { getSyncStatuses, type SyncStatus } from "@/lib/sync/status";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ export default async function Home() {
     );
   }
   const events = await listEvents();
+  // Status is extra: the page still renders if it can't be read.
+  const sync = await getSyncStatuses(events).catch(() => new Map<string, SyncStatus>());
 
   return (
     <>
@@ -32,7 +35,7 @@ export default async function Home() {
       {events.length ? (
         <section className="grid gap-4">
           {events.map((e) => (
-            <EventCard key={e.id} slug={e.slug} title={e.title} rootId={e.root_id} itemCount={e.item_count} size={e.size} />
+            <EventCard key={e.id} slug={e.slug} title={e.title} rootId={e.root_id} itemCount={e.item_count} size={e.size} sync={sync.get(e.id)} />
           ))}
         </section>
       ) : (

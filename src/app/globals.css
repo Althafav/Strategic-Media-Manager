@@ -68,3 +68,21 @@ body {
     stroke-dashoffset: 0;
   }
 }
+
+/* Lightbox slideshow: a hairline that fills until the next photo. */
+.slideshow-progress {
+  width: 100%;
+  transform-origin: left;
+  animation: slideshow-fill linear forwards;
+}
+@keyframes slideshow-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .slideshow-progress {
+    animation: none;
+    opacity: 0;
+  }
+}

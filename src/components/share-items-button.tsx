@@ -24,14 +24,15 @@ export function ShareItemsButton({ items, folderId, folderPath, folderName }: Pr
   const events = new Set(items.map((i) => i.event));
   const allImages = items.every((i) => i.kind === "file" && i.isImage);
   const noun = allImages ? ["photo", "photos"] : ["item", "items"];
+  // Search results or picks from several folders: remember the folder when every pick came from the same one.
+  const locations = new Set(items.map((i) => (i.location ?? folderPath).join("/")));
+  const from = folderName ? ` from ${cleanName(folderName)}` : locations.size > 1 ? ` from ${locations.size} folders` : "";
   const name =
     items.length === 1
       ? items[0].kind === "folder"
         ? cleanName(items[0].name)
         : items[0].name
-      : `${items.length} ${noun[1]}${folderName ? ` from ${cleanName(folderName)}` : ""}`;
-  // Search results: remember the folder when every pick came from the same one.
-  const locations = new Set(items.map((i) => (i.location ?? folderPath).join("/")));
+      : `${items.length} ${noun[1]}${from}`;
   const path = locations.size === 1 ? (items[0].location ?? folderPath) : [];
 
   let problem: string | null = null;

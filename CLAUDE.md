@@ -37,7 +37,8 @@ src/lib/share-types.ts          client-safe share types/helpers (EXPIRY_OPTIONS,
 src/lib/access.ts               decides which event a media API request may read (session or signed share item)
 src/lib/format.ts               URL builders: browseHref, shareHref, downloadHref, coverSrc, thumbSrc (carry t/sig)
 src/lib/zip-download.ts         browser-side zip: /api/manifest -> fetch OneDrive URLs -> client-zip -> disk
-src/lib/sync/delta-sync.ts      OneDrive delta feed -> Supabase `nodes` (resumable cursor in `event_sync`)
+src/lib/sync/delta-sync.ts      OneDrive delta feed -> Supabase `nodes` (resumable cursor + `locked_until` lease in `event_sync`)
+src/lib/sync/status.ts          per-event index status for the event cards (server-only), plain-language sync errors
 src/app/e/[slug]/[[...path]]    event folder browser (team)
 src/app/s/[token]/[[...path]]   shared folder / picked-items view (external, no login)
 src/app/shares                  list/revoke all share links + server actions
@@ -119,7 +120,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
@@ -139,7 +140,8 @@ reads or writes.
 
 - The guest-link API is unofficial and can break or be throttled. The long-term fix is Graph app-only auth
   (swap `session.ts`).
-- No sync lock: an `after()` sync and cron/CLI sync can run on the same cursor concurrently.
+- The sync lock needs migration `0005_sync_lock`; until it runs, `runDeltaSync` proceeds unlocked. A busy event
+  throws `SyncBusyError` (the CLI stops on it; cron reports it and moves on).
 - `/api/sync` handles events sequentially, so a huge first sync can starve later events within one run.
 - The event list cache (30s) and share cache (15s) are per instance.
 - Login has only a 500ms delay against guessing. The shared password must be strong in production.

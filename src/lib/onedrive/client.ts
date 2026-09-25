@@ -236,11 +236,19 @@ function toMediaItem(i: DriveItem): Omit<MediaItem, "event"> {
     width: i.image?.width ?? i.video?.width,
     height: i.image?.height ?? i.video?.height,
     takenAt: i.photo?.takenDateTime,
-    camera: [i.photo?.cameraMake, i.photo?.cameraModel].filter(Boolean).join(" ") || undefined,
+    camera: cameraName(i) ?? undefined,
     modifiedAt: i.lastModifiedDateTime,
     thumb: thumb ? sizedThumb(thumb, 400) : undefined,
     preview: thumb ? sizedThumb(thumb, 1920) : undefined,
   };
+}
+
+/** "Canon EOS 5D Mark IV", not "Canon Canon EOS 5D Mark IV": many models already start with the make. */
+export function cameraName(i: DriveItem): string | null {
+  const make = i.photo?.cameraMake?.trim();
+  const model = i.photo?.cameraModel?.trim();
+  if (make && model?.toLowerCase().startsWith(make.toLowerCase())) return model;
+  return [make, model].filter(Boolean).join(" ") || null;
 }
 
 function byKindThenName(a: { kind: string; name: string }, b: { kind: string; name: string }) {

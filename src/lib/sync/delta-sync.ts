@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import type { EventRow } from "@/lib/events";
-import { drive, SELECT, type DriveItem } from "@/lib/onedrive/client";
+import { cameraName, drive, SELECT, type DriveItem } from "@/lib/onedrive/client";
 import { getSession } from "@/lib/onedrive/session";
 
 type DeltaPage = { value: (DriveItem & { deleted?: object; parentReference?: { id?: string } })[] } & {
@@ -9,6 +9,39 @@ type DeltaPage = { value: (DriveItem & { deleted?: object; parentReference?: { i
 };
 
 export type SyncResult = { upserted: number; deleted: number; pages: number; complete: boolean };
+
+/** Another run holds this event's lock. Nothing was changed. */
+export class SyncBusyError extends Error {
+  constructor() {
+    super("A sync is already running for this event.");
+  }
+}
+
+/**
+ * Takes the event's sync lease. Returns false when another run holds it.
+ * Before migration 0005 there is no lock column, so syncs run unlocked as before.
+ */
+async function acquireLock(eventId: string, ms: number): Promise<{ ok: boolean; release: () => Promise<void> }> {
+  const now = new Date();
+  const { data, error } = await db()
+    .from("event_sync")
+    .update({ locked_until: new Date(now.getTime() + ms).toISOString() })
+    .eq("event_id", eventId)
+    .or(`locked_until.is.null,locked_until.lt.${now.toISOString()}`)
+    .select("event_id");
+  const noop = async () => {};
+  if (error) {
+    if (error.code === "42703" || error.code === "PGRST204") return { ok: true, release: noop };
+    throw error;
+  }
+  if (!data?.length) return { ok: false, release: noop };
+  return {
+    ok: true,
+    release: async () => {
+      await db().from("event_sync").update({ locked_until: null }).eq("event_id", eventId);
+    },
+  };
+}
 
 /**
  * Mirrors one event's share metadata into Supabase using the OneDrive delta
@@ -23,6 +56,10 @@ export async function runDeltaSync(event: EventRow, { budgetMs = 250_000 } = {})
   const base = `/items/${rootId}/delta`;
   const { data: state } = await db().from("event_sync").select("*").eq("event_id", event.id).maybeSingle();
   if (!state) await db().from("event_sync").insert({ event_id: event.id });
+
+  // The lease outlives the budget by a margin, so a run that crashes without releasing frees itself.
+  const lock = await acquireLock(event.id, budgetMs + 60_000);
+  if (!lock.ok) throw new SyncBusyError();
 
   let url: string | undefined =
     state?.next_link ?? state?.delta_link ?? `${base}?$top=1000&$select=${SELECT},parentReference,deleted`;
@@ -70,6 +107,8 @@ export async function runDeltaSync(event: EventRow, { budgetMs = 250_000 } = {})
   } catch (e) {
     await saveState({ last_run_at: new Date().toISOString(), last_error: String((e as Error).message) });
     throw e;
+  } finally {
+    await lock.release();
   }
   return result;
 }
@@ -90,7 +129,7 @@ function toRow(i: DriveItem & { parentReference?: { id?: string } }, eventId: st
     width: i.image?.width ?? i.video?.width ?? null,
     height: i.image?.height ?? i.video?.height ?? null,
     taken_at: i.photo?.takenDateTime ?? null,
-    camera: [i.photo?.cameraMake, i.photo?.cameraModel].filter(Boolean).join(" ") || null,
+    camera: cameraName(i),
     modified_at: i.lastModifiedDateTime ?? null,
     synced_at: new Date().toISOString(),
   };

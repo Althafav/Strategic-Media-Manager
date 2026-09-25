@@ -50,7 +50,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
         {items.length === 300 && <p className="text-subtle text-sm mt-1">Showing the first 300 matches. Refine your search to narrow down.</p>}
       </div>
       {items.length ? (
-        <Gallery path={[]} folderName={`Search ${q}`} items={items} canShare />
+        <Gallery path={[]} folderName={`Search ${q}`} items={items} listedOrder="Relevance" canShare />
       ) : (
         <p className="py-24 text-center text-subtle">No file or folder names contain &ldquo;{q}&rdquo;. Try a shorter part of the name.</p>
       )}
