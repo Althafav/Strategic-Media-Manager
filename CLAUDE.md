@@ -26,12 +26,13 @@ The package is CommonJS, so wrap top-level `await` in `async function main()`.
 ## Layout
 
 ```
-src/proxy.ts                    auth gate for every request (login cookie, share-link bypass, view counting)
+src/proxy.ts                    auth gate for every request (login cookie + active SSO user, share-link bypass, view counting)
 src/lib/onedrive/session.ts     guest-link -> drive access token (the ONLY place that knows the unofficial chain)
 src/lib/onedrive/client.ts      drive API calls: getFolder, getCoverUrl, getThumbUrl, getDownloadUrl, buildManifest
 src/lib/events.ts               events table (create validates the link by opening it), 30s in-process cache
-src/lib/auth.ts                 shared team login: credentials from env, HMAC-signed session cookie
-src/lib/admin.ts                ADMIN_KEY check for add/remove event
+src/lib/auth.ts                 HMAC-signed session cookie with a role: admin (password login) or user (SSO); requireAdmin/requireSession
+src/lib/users.ts                app_users allowlist for Microsoft SSO (admin-managed), 30s in-process cache
+src/lib/sso.ts                  AIM Congress SSO broker URL + state cookie (the returned ?email= is unsigned, see file comment)
 src/lib/shares.ts               private share links (server-only: db + node:crypto)
 src/lib/share-types.ts          client-safe share types/helpers (EXPIRY_OPTIONS, isExpired, formatDate)
 src/lib/access.ts               decides which event a media API request may read (session or signed share item)
@@ -43,7 +44,9 @@ src/app/e/[slug]/[[...path]]    event folder browser (team)
 src/app/s/[token]/[[...path]]   shared folder / picked-items view (external, no login)
 src/app/shares                  list/revoke all share links + server actions
 src/app/events                  add/remove event server actions, /events/new form
-src/app/login                   login page + login/logout actions
+src/app/login                   login page (Microsoft button + admin password form) + login/logout actions
+src/app/api/auth/sso, sso-login Microsoft SSO start (sets state cookie) and broker callback (creates user session)
+src/app/users                   admin-only: add/remove SSO users
 src/app/search                  index search (Supabase `search_nodes` RPC)
 src/app/api/{download,thumb,cover}/[id], api/manifest   media APIs (302s to OneDrive / JSON)
 src/app/api/sync                Vercel Cron entry (Bearer CRON_SECRET)
@@ -70,11 +73,18 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Security model (keep all layers)
 
-1. **Team login**: `proxy.ts` redirects pages to `/login?next=` and returns 401 on `/api/*` unless the
-   `smm_session` cookie verifies. Credentials come from `AUTH_EMAIL`/`AUTH_PASSWORD`. The HMAC key is
-   `AUTH_SECRET:AUTH_PASSWORD`, so changing the password logs everyone out.
-2. **Server actions must check the session themselves** (`requireSession()`). Next docs warn that proxy coverage
-   can silently disappear. Add/remove event also requires `ADMIN_KEY` (user decision).
+1. **Login**: `proxy.ts` redirects pages to `/login?next=` and returns 401 on `/api/*` unless the
+   `smm_session` cookie verifies (`verifyActiveSession`). The HMAC key is `AUTH_SECRET:AUTH_PASSWORD`, so changing
+   the password logs everyone out. Two roles:
+   - **admin**: the email/password form (`AUTH_EMAIL`/`AUTH_PASSWORD`). Only the admin manages users (`/users`),
+     adds/removes events, and sees photo details (lightbox Details panel and meta line, `showDetails`).
+   - **user**: Microsoft SSO via the AIM Congress broker. Allowed only if the email is in `app_users`; checked
+     at login and on every request (`getSession` and the proxy), so removal signs them out within the 30s cache.
+     The broker's `?email=` is unsigned (accepted trade-off); the `smm_sso` state cookie from `/api/auth/sso` must
+     be present on the callback. The broker's firewall rejects localhost redirects: test on a deployed URL.
+   - Old tokens without `role`: an email means user, no email means admin.
+2. **Server actions must check the session themselves** (`requireSession()`, or `requireAdmin()` for events and
+   users). Next docs warn that proxy coverage can silently disappear.
 3. **Share links** (`/s/<token>`): a random 24-char token row in `shares` (expiry, revocable, `view_count`).
    - Two kinds: a whole folder (`item_ids` null), or hand-picked items from the selection bar (`item_ids`, up to
      500). Picked items are loaded with `getItems` (folder listing first, then per-id). On item links only
@@ -90,7 +100,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
      (`streamHref`, the lightbox video player). Keep new playback uses on `streamHref`.
    - `getActiveShare` caches for 15s per instance, so revocation may lag up to 15s across servers.
    - Share lookups must fail closed (`.catch(() => null)`).
-4. `next` redirect targets must be same-site relative paths (`safeNext` in `login/actions.ts`).
+4. `next` redirect targets must be same-site relative paths (`safeNext` in `lib/auth.ts`).
 
 ## Conventions
 
@@ -118,17 +128,18 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Environment (`.env.local`, never print values)
 
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_KEY`, `AUTH_EMAIL`, `AUTH_PASSWORD`, `AUTH_SECRET`,
-`CRON_SECRET`. Restart the dev server after changing them.
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_EMAIL`, `AUTH_PASSWORD`, `AUTH_SECRET`, `CRON_SECRET`,
+`SSO_LOGIN_URL` (optional, defaults to the broker), `APP_URL` (optional, defaults to the request host). Restart the dev server after changing them.
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
 - `nodes` (search index, PK `(event_id, id)`, `path` filled by `refresh_paths`)
 - `shares`
+- `app_users` (SSO allowlist)
 
 Deleting an event cascades to nodes, sync state and shares. RLS is on with no policies: only the service role
 reads or writes.
@@ -147,7 +158,9 @@ reads or writes.
   throws `SyncBusyError` (the CLI stops on it; cron reports it and moves on).
 - `/api/sync` handles events sequentially, so a huge first sync can starve later events within one run.
 - The event list cache (30s) and share cache (15s) are per instance.
-- Login has only a 500ms delay against guessing. The shared password must be strong in production.
+- Login has only a 500ms delay against guessing. The admin password must be strong in production.
+- SSO trusts the broker's unsigned `?email=`: someone who knows an allowed email could forge a login. Ask the
+  broker for a signed token to close this.
 - Very large "Download folder" manifests are built in one request (limit 25k files, 300s).
 - `search_nodes` doesn't escape `%`/`_` in the query.
 - Nothing is committed to git yet beyond the create-next-app initial commit.

@@ -167,11 +167,13 @@ export function Lightbox({ items, index, onIndex, onClose, share, showDetails = 
       <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 h-14 shrink-0">
         <div className="min-w-0 flex-1 pl-2">
           <p className="text-sm font-medium truncate">{item.name}</p>
-          <p className="text-xs text-white/60 truncate flex gap-3">
-            {meta.map((m) => (
-              <span key={m}>{m}</span>
-            ))}
-          </p>
+          {showDetails && (
+            <p className="text-xs text-white/60 truncate flex gap-3">
+              {meta.map((m) => (
+                <span key={m}>{m}</span>
+              ))}
+            </p>
+          )}
         </div>
         <span className="text-xs text-white/60 tabular-nums px-1">
           {index + 1} / {count}
