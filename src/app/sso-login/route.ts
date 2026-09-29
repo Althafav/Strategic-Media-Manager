@@ -1,7 +1,7 @@
 import { after, type NextRequest, NextResponse } from "next/server";
 import { createSessionToken, safeNext, SESSION_COOKIE, SESSION_COOKIE_OPTIONS } from "@/lib/auth";
 import { SSO_STATE_COOKIE } from "@/lib/sso";
-import { isAllowedUser, normalizeEmail, touchLogin } from "@/lib/users";
+import { isAllowedUser, normalizeEmail, requestAccess, touchLogin } from "@/lib/users";
 
 /** Broker callback: /sso-login?email=<address>. See lib/sso.ts for what is (and isn't) verified. */
 export async function GET(request: NextRequest) {
@@ -23,7 +23,11 @@ export async function GET(request: NextRequest) {
   };
 
   if (!started) return fail("sso_expired");
-  if (!(await isAllowedUser(email).catch(() => false))) return fail("sso_denied");
+  if (!(await isAllowedUser(email).catch(() => false))) {
+    // Unknown or pending: record a request for an admin to approve (no session is issued).
+    const status = await requestAccess(email).catch(() => null);
+    return fail(status === "pending" ? "sso_pending" : "sso_denied");
+  }
 
   after(() => touchLogin(email).catch((e) => console.error("touchLogin failed", e)));
   const res = NextResponse.redirect(new URL(next, request.url));

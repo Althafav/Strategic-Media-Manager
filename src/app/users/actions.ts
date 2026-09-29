@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
-import { addUser, removeUser } from "@/lib/users";
+import { addUser, approveUser, removeUser } from "@/lib/users";
 
 export type AddUserState = { error?: string; added?: string; values?: { email: string; name: string } };
 
@@ -16,6 +16,18 @@ export async function addUserAction(_prev: AddUserState, form: FormData): Promis
   if (!result.ok) return { error: result.error, values: { email, name } };
   revalidatePath("/users");
   return { added: email.trim().toLowerCase() };
+}
+
+export async function approveUserAction(email: string): Promise<{ error?: string }> {
+  const denied = await requireAdmin();
+  if (denied) return { error: denied };
+  try {
+    await approveUser(email);
+    revalidatePath("/users");
+    return {};
+  } catch (e) {
+    return { error: (e as Error).message || "Could not approve the request." };
+  }
 }
 
 export async function removeUserAction(email: string): Promise<{ error?: string }> {

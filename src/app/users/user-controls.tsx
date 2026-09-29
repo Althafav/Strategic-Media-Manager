@@ -2,8 +2,8 @@
 
 import { useActionState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Trash2, UserPlus } from "lucide-react";
-import { addUserAction, removeUserAction, type AddUserState } from "./actions";
+import { Check, Loader2, Trash2, UserPlus } from "lucide-react";
+import { addUserAction, approveUserAction, removeUserAction, type AddUserState } from "./actions";
 
 const input =
   "w-full h-10 rounded-md bg-background border border-border px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/25";
@@ -55,17 +55,42 @@ export function AddUserForm() {
   );
 }
 
-export function RemoveUserButton({ email }: { email: string }) {
+export function ApproveUserButton({ email }: { email: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   return (
     <button
       type="button"
       disabled={pending}
-      title="Remove user"
-      aria-label={`Remove ${email}`}
+      onClick={() =>
+        start(async () => {
+          const res = await approveUserAction(email);
+          if (res.error) window.alert(res.error);
+          router.refresh();
+        })
+      }
+      className="h-8 px-3 rounded-md bg-accent text-accent-foreground text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-60"
+    >
+      {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+      Approve
+    </button>
+  );
+}
+
+export function RemoveUserButton({ email, reject }: { email: string; reject?: boolean }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      title={reject ? "Reject request" : "Remove user"}
+      aria-label={`${reject ? "Reject" : "Remove"} ${email}`}
       onClick={() => {
-        if (!window.confirm(`Remove ${email}? They'll be signed out and can't sign in again.`)) return;
+        const msg = reject
+          ? `Reject the request from ${email}?`
+          : `Remove ${email}? They'll be signed out and can't sign in again.`;
+        if (!window.confirm(msg)) return;
         start(async () => {
           const res = await removeUserAction(email);
           if (res.error) window.alert(res.error);

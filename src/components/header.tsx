@@ -3,10 +3,13 @@ import Link from "next/link";
 import { Link2, LogOut, Search, Users } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { getSession } from "@/lib/auth";
+import { isPending, listUsers } from "@/lib/users";
 
 export async function Header() {
   const session = await getSession();
   const loggedIn = !!session;
+  const pendingCount =
+    session?.role === "admin" ? (await listUsers().catch(() => [])).filter(isPending).length : 0;
   const logo = (
     <>
       <Image src="/mark.png" alt="" width={28} height={28} className="rounded-[5px]" priority />
@@ -53,6 +56,11 @@ export async function Header() {
                 >
                   <Users className="size-4" />
                   <span className="hidden md:inline">Users</span>
+                  {pendingCount > 0 && (
+                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-amber-500/20 text-xs text-foreground grid place-items-center">
+                      {pendingCount}
+                    </span>
+                  )}
                 </Link>
               )}
               <form action={logout}>

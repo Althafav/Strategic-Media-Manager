@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
 import { formatDate } from "@/lib/share-types";
-import { listUsers } from "@/lib/users";
-import { AddUserForm, RemoveUserButton } from "./user-controls";
+import { isPending, listUsers } from "@/lib/users";
+import { AddUserForm, ApproveUserButton, RemoveUserButton } from "./user-controls";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Users · Strategic Media Manager" };
@@ -10,6 +10,8 @@ export const metadata = { title: "Users · Strategic Media Manager" };
 export default async function UsersPage() {
   if (!(await isAdmin())) notFound();
   const users = await listUsers().catch(() => null);
+  const requests = (users ?? []).filter(isPending).sort((a, b) => (b.requested_at ?? "").localeCompare(a.requested_at ?? ""));
+  const active = (users ?? []).filter((u) => !isPending(u));
 
   return (
     <div className="max-w-3xl">
@@ -26,12 +28,35 @@ export default async function UsersPage() {
         </p>
       ) : (
         <>
+          {requests.length > 0 && (
+            <section className="mb-6">
+              <h2 className="font-medium mb-2">
+                Access requests <span className="text-subtle font-normal">({requests.length})</span>
+              </h2>
+              <ul className="divide-y divide-border rounded-lg border border-amber-500/30 bg-surface">
+                {requests.map((u) => (
+                  <li key={u.email} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                    <div className="flex-1 min-w-56">
+                      <p className="font-medium truncate">{u.email}</p>
+                      <p className="text-xs text-subtle">
+                        Waiting for approval{u.requested_at ? `, requested ${formatDate(u.requested_at)}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <ApproveUserButton email={u.email} />
+                      <RemoveUserButton email={u.email} reject />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           <AddUserForm />
-          {users.length === 0 ? (
+          {active.length === 0 ? (
             <p className="py-16 text-center text-subtle">No users yet. Add someone&apos;s Microsoft email above.</p>
           ) : (
             <ul className="mt-6 divide-y divide-border rounded-lg border border-border bg-surface">
-              {users.map((u) => (
+              {active.map((u) => (
                 <li key={u.email} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
                   <div className="flex-1 min-w-56">
                     <p className="font-medium truncate">{u.name || u.email}</p>

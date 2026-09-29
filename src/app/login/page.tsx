@@ -7,6 +7,7 @@ export const metadata = { title: "Sign in · Strategic Media Manager" };
 
 const SSO_ERRORS: Record<string, string> = {
   sso_denied: "That Microsoft account doesn't have access. Ask an admin to add you.",
+  sso_pending: "Your access request has been sent. Please wait for an admin to approve it, then sign in again.",
   sso_expired: "The Microsoft sign-in took too long or was started elsewhere. Try again.",
 };
 
@@ -35,7 +36,14 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <p className="text-sm text-subtle mt-2 mb-6">Strategic Media Manager is for the internal team only.</p>
 
         {ssoError && (
-          <p role="alert" className="mb-4 text-sm rounded-md border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 px-3 py-2">
+          <p
+            role={error === "sso_pending" ? "status" : "alert"}
+            className={
+              error === "sso_pending"
+                ? "mb-4 text-sm rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2"
+                : "mb-4 text-sm rounded-md border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 px-3 py-2"
+            }
+          >
             {ssoError}
           </p>
         )}
