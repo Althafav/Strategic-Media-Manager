@@ -19,6 +19,8 @@ export type ShareRow = {
   last_downloaded_at?: string | null;
   /** Set when the link shares picked items instead of the whole folder. Missing before migration 0004. */
   item_ids?: string[] | null;
+  /** "admin", or the SSO user's email. Null for links made before migration 0008. */
+  created_by?: string | null;
 };
 
 /** Most items one link may carry (each is looked up when the link is opened). */

@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import type { Session } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getEvent, listEvents, type EventRow } from "@/lib/events";
 import { isExpired, type ShareRow } from "@/lib/share-types";
@@ -40,6 +41,8 @@ export async function createShare(input: {
   folderName: string;
   label: string;
   expiry: string;
+  /** shareOwner() of the session creating it. */
+  createdBy: string;
 }): Promise<ShareRow> {
   const event = await getEvent(input.eventSlug);
   if (!event) throw new Error("Event not found.");
@@ -56,6 +59,7 @@ export async function createShare(input: {
       ...(input.itemIds?.length ? { item_ids: input.itemIds } : {}),
       label: input.label.trim().slice(0, 120) || null,
       expires_at,
+      created_by: input.createdBy,
     })
     .select("*")
     .single();
@@ -63,8 +67,10 @@ export async function createShare(input: {
   return data as ShareRow;
 }
 
-export async function listShares(filter: { eventId?: string; folderId?: string } = {}): Promise<ShareRow[]> {
+/** `createdBy` limits the list to one owner's links (team members); omit it for the admin's view of all. */
+export async function listShares(filter: { eventId?: string; folderId?: string; createdBy?: string } = {}): Promise<ShareRow[]> {
   let query = db().from("shares").select("*").order("created_at", { ascending: false });
+  if (filter.createdBy) query = query.eq("created_by", filter.createdBy);
   if (filter.eventId) query = query.eq("event_id", filter.eventId);
   if (filter.folderId) query = query.eq("folder_id", filter.folderId);
   const { data, error } = await query;
@@ -72,10 +78,24 @@ export async function listShares(filter: { eventId?: string; folderId?: string }
   return data as ShareRow[];
 }
 
-export async function deleteShare(id: string): Promise<void> {
-  const { data, error } = await db().from("shares").delete().eq("id", id).select("token");
+/** With `createdBy`, only deletes the link if that owner made it. Returns false when nothing was deleted. */
+export async function deleteShare(id: string, createdBy?: string): Promise<boolean> {
+  let query = db().from("shares").delete().eq("id", id);
+  if (createdBy) query = query.eq("created_by", createdBy);
+  const { data, error } = await query.select("token");
   if (error) throw error;
   for (const row of data ?? []) cache.delete(row.token);
+  return !!data?.length;
+}
+
+/** What `created_by` stores for a session. */
+export function shareOwner(session: Session): string {
+  return session.role === "admin" ? "admin" : session.email!;
+}
+
+/** The owner filter for listing/revoking: none for the admin (sees all), the user's own email otherwise. */
+export function ownerFilter(session: Session): string | undefined {
+  return session.role === "admin" ? undefined : shareOwner(session);
 }
 
 export async function recordView(token: string) {

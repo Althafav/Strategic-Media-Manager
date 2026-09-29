@@ -42,7 +42,7 @@ src/lib/sync/delta-sync.ts      OneDrive delta feed -> Supabase `nodes` (resumab
 src/lib/sync/status.ts          per-event index status for the event cards (server-only), plain-language sync errors
 src/app/e/[slug]/[[...path]]    event folder browser (team)
 src/app/s/[token]/[[...path]]   shared folder / picked-items view (external, no login)
-src/app/shares                  list/revoke all share links + server actions
+src/app/shares                  list/revoke share links (own links; admin sees all + creator) + server actions
 src/app/events                  add/remove event server actions, /events/new form
 src/app/login                   login page (Microsoft button + admin password form) + login/logout actions
 src/app/api/auth/sso, sso-login Microsoft SSO start (sets state cookie) and broker callback (creates user session)
@@ -100,6 +100,9 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
      (`streamHref`, the lightbox video player). Keep new playback uses on `streamHref`.
    - `getActiveShare` caches for 15s per instance, so revocation may lag up to 15s across servers.
    - Share lookups must fail closed (`.catch(() => null)`).
+   - Ownership (migration 0008): `created_by` is `"admin"` or the SSO user's email (`shareOwner`). Team members
+     list and revoke only their own links (`ownerFilter`); the admin sees and revokes all, with "Added by".
+     Null = made before tracking.
 4. `next` redirect targets must be same-site relative paths (`safeNext` in `lib/auth.ts`).
 
 ## Conventions
@@ -133,7 +136,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)

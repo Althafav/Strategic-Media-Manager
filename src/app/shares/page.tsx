@@ -1,23 +1,37 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { CopyLinkButton, RevokeLinkButton, ShareStatus } from "@/components/share-link-actions";
 import { listEvents } from "@/lib/events";
 import { browseHref, cleanName } from "@/lib/format";
 import { downloadSummary, formatDate, isItemShare } from "@/lib/share-types";
-import { listShares } from "@/lib/shares";
+import { getSession } from "@/lib/auth";
+import { listShares, ownerFilter } from "@/lib/shares";
+import { listUsers } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Shared links · Strategic Media Manager" };
 
 export default async function SharesPage() {
-  const [shares, events] = await Promise.all([listShares().catch(() => null), listEvents({ includeHidden: true })]);
+  const session = await getSession();
+  if (!session) redirect("/login?next=/shares");
+  const admin = session.role === "admin";
+  const [shares, events, users] = await Promise.all([
+    listShares({ createdBy: ownerFilter(session) }).catch(() => null),
+    listEvents({ includeHidden: true }),
+    admin ? listUsers().catch(() => []) : [],
+  ]);
   const eventById = new Map(events.map((e) => [e.id, e]));
+  const nameByEmail = new Map(users.map((u) => [u.email, u.name || u.email]));
+  const addedBy = (owner: string | null | undefined) =>
+    owner === "admin" ? "Admin" : owner ? (nameByEmail.get(owner) ?? owner) : "Unknown (before tracking)";
 
   return (
     <>
       <div className="pt-10">
         <h1 className="display text-5xl">Shared links</h1>
         <p className="text-subtle mt-1">
-          Private view links given to people outside the team. Revoking a link cuts off access immediately.
+          {admin ? "Every private view link the team has made." : "Private view links you've made."} Revoking a link cuts
+          off access immediately.
         </p>
       </div>
 
@@ -56,6 +70,7 @@ export default async function SharesPage() {
                 </div>
                 <div className="text-xs text-subtle w-44">
                   <p>Created {formatDate(s.created_at)}</p>
+                  {admin && <p className="truncate" title={s.created_by ?? undefined}>Added by {addedBy(s.created_by)}</p>}
                   <p>
                     <ShareStatus share={s} />
                   </p>
