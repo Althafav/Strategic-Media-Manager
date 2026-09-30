@@ -69,9 +69,22 @@ export async function runDeltaSync(event: EventRow, { budgetMs = 250_000 } = {})
     if (error) throw error;
   };
 
+  const fullUrl = `${base}?$top=1000&$select=${SELECT},parentReference,deleted`;
+  let resyncedAt: string | null = null;
+
   try {
     while (url && Date.now() - started < budgetMs) {
-      const page: DeltaPage = await drive(share, url);
+      let page: DeltaPage;
+      try {
+        page = await drive(share, url);
+      } catch (e) {
+        // 410 resyncRequired: the saved cursor expired. Drop it and re-list from scratch.
+        if (url === fullUrl || !/Drive API 410/.test((e as Error).message)) throw e;
+        resyncedAt = new Date().toISOString();
+        url = fullUrl;
+        await saveState({ next_link: null, delta_link: null });
+        continue;
+      }
       result.pages++;
 
       const removed = page.value.filter((i) => i.deleted).map((i) => i.id);
@@ -99,6 +112,11 @@ export async function runDeltaSync(event: EventRow, { budgetMs = 250_000 } = {})
         url = undefined;
         result.complete = true;
         await saveState({ next_link: null, delta_link: delta ? cursor(delta) : null });
+        if (resyncedAt) {
+          // A full re-list re-stamps every live item; anything older was deleted while the cursor was dead.
+          const { error } = await db().from("nodes").delete().eq("event_id", event.id).lt("synced_at", resyncedAt);
+          if (error) throw error;
+        }
         const { error } = await db().rpc("refresh_paths", { ev: event.id, root_id: rootId });
         if (error) throw error;
       }

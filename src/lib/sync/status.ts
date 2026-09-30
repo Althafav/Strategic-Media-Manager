@@ -69,6 +69,9 @@ export function describeSyncError(message: string): string {
   if (/Share link returned (401|403|404)|FedAuth|shared folder path|Drive access token/.test(message)) {
     return "the OneDrive link may have expired or is no longer shared with “Anyone with the link”.";
   }
+  if (/Drive API 410|resyncRequired/.test(message)) {
+    return "the saved sync position expired. The next sync re-indexes the folder from scratch.";
+  }
   if (/\b(429|503)\b/.test(message)) return "OneDrive is throttling requests. The next sync will retry.";
   if (/Drive API (401|403)/.test(message)) return "OneDrive refused access to the folder.";
   return "OneDrive returned an unexpected error.";
