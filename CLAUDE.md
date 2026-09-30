@@ -47,6 +47,8 @@ src/app/events                  add/remove event server actions, /events/new for
 src/app/login                   login page (Microsoft button + admin password form) + login/logout actions
 src/app/api/auth/sso, sso-login Microsoft SSO start (sets state cookie) and broker callback (creates user session)
 src/app/users                   admin-only: add/remove SSO users, approve/reject pending access requests
+src/app/requests                photo requests: "My requests" for everyone, "Assigned to me" for an event's coordinator (admin sees all) + server actions
+src/lib/requests.ts             photo_requests queries + canHandle (server-only); client-safe types/labels in request-types.ts
 src/app/search                  index search (Supabase `search_nodes` RPC)
 src/app/top                     most liked photos (`top_liked` RPC, event filter `?e=`); likes live in `photo_likes` via `lib/likes.ts` + `app/likes/actions.ts`
 src/app/api/{download,thumb,cover}/[id], api/manifest   media APIs (302s to OneDrive / JSON)
@@ -137,7 +139,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
@@ -145,6 +147,9 @@ here; DDL can't be run from the app. Tables:
 - `shares`
 - `app_users` (SSO allowlist; `status` active/pending: unknown Microsoft sign-ins are stored as pending until an admin approves)
 - `photo_likes` (one row per team member per liked item; owner = `shareOwner`; team only, never on share pages)
+- `photo_requests` (a team member asks the event's coordinator for photos; `requested_by`/`resolved_by` = `shareOwner`).
+  `events.coordinator_email` is the marketing coordinator: at most one per event, set only by the admin
+  (`setEventCoordinator`, must be an active app_user). Only the admin or that coordinator may answer (`canHandle`).
 
 Deleting an event cascades to nodes, sync state and shares. RLS is on with no policies: only the service role
 reads or writes.

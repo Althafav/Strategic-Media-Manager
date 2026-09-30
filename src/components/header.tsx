@@ -1,8 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, Link2, LogOut, Search, Users } from "lucide-react";
+import { Heart, ImagePlus, Link2, LogOut, Search, Users } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { getSession } from "@/lib/auth";
+import { pendingCountFor } from "@/lib/requests";
 import { isPending, listUsers } from "@/lib/users";
 
 export async function Header() {
@@ -10,6 +11,8 @@ export async function Header() {
   const loggedIn = !!session;
   const pendingCount =
     session?.role === "admin" ? (await listUsers().catch(() => [])).filter(isPending).length : 0;
+  // New photo requests waiting for this coordinator (or the admin). 0 before migration 0011.
+  const requestCount = session ? await pendingCountFor(session).catch(() => 0) : 0;
   const logo = (
     <>
       <Image src="/mark.png" alt="" width={28} height={28} className="rounded-[5px]" priority />
@@ -47,6 +50,19 @@ export async function Header() {
               >
                 <Heart className="size-4" />
                 <span className="hidden md:inline">Most liked</span>
+              </Link>
+              <Link
+                href="/requests"
+                title="Photo requests"
+                className="h-9 px-2.5 rounded-md text-sm text-subtle hover:text-foreground hover:bg-background inline-flex items-center gap-2"
+              >
+                <ImagePlus className="size-4" />
+                <span className="hidden md:inline">Requests</span>
+                {requestCount > 0 && (
+                  <span className="min-w-5 h-5 px-1.5 rounded-full bg-amber-500/20 text-xs text-foreground grid place-items-center">
+                    {requestCount}
+                  </span>
+                )}
               </Link>
               <Link
                 href="/shares"

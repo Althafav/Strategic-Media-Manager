@@ -4,7 +4,8 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, requireSession } from "@/lib/auth";
-import { createEvent, deleteEvent, getEvent } from "@/lib/events";
+import { createEvent, deleteEvent, getEvent, setCoordinator } from "@/lib/events";
+import { isAllowedUser, normalizeEmail } from "@/lib/users";
 import { runDeltaSync, SyncBusyError } from "@/lib/sync/delta-sync";
 import { describeSyncError } from "@/lib/sync/status";
 
@@ -66,4 +67,21 @@ export async function removeEvent(_prev: RemoveEventState, form: FormData): Prom
   const removed = await deleteEvent(String(form.get("slug") ?? ""));
   if (!removed) return { error: "Event not found. It may already have been removed." };
   redirect("/");
+}
+
+/** Assigns (or clears, with an empty email) the event's marketing coordinator. Admin only; must be an active user. */
+export async function setEventCoordinator(slug: string, email: string): Promise<{ error?: string }> {
+  const denied = await requireAdmin();
+  if (denied) return { error: denied };
+  const event = await getEvent(slug);
+  if (!event) return { error: "Event not found. It may have been removed." };
+  const coordinator = email ? normalizeEmail(email) : null;
+  if (coordinator && !(await isAllowedUser(coordinator))) return { error: "Pick an active user from the Users list." };
+  try {
+    await setCoordinator(event.id, coordinator);
+  } catch (e) {
+    return { error: (e as Error).message || "Could not change the coordinator." };
+  }
+  revalidatePath(`/e/${encodeURIComponent(slug)}`, "layout");
+  return {};
 }

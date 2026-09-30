@@ -2,12 +2,15 @@ import { notFound, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Gallery } from "@/components/gallery";
 import { getSession } from "@/lib/auth";
+import { CoordinatorSelect } from "@/components/coordinator-select";
+import { RequestPhotosButton } from "@/components/request-photos-button";
 import { ShareFolderButton } from "@/components/share-folder-button";
 import { getEvent } from "@/lib/events";
 import { browseHref, cleanName } from "@/lib/format";
 import { getFolder, NotFoundError } from "@/lib/onedrive/client";
 import { getEventLikes } from "@/lib/likes";
 import { listShares, ownerFilter, shareOwner } from "@/lib/shares";
+import { isPending, listUsers } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -41,19 +44,32 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
   // null when the shares table doesn't exist yet (migration 0003 not run).
   const session = await getSession();
   if (!session) redirect("/login");
-  const [shares, likes] = await Promise.all([
+  const [shares, likes, users] = await Promise.all([
     listShares({ eventId: event.id, folderId: result.folder.id, createdBy: ownerFilter(session) }).catch(() => null),
     getEventLikes(event.id, event.slug, shareOwner(session)).catch(() => ({})),
+    listUsers().catch(() => []),
   ]);
+  const admin = session.role === "admin";
+  const activeUsers = users.filter((u) => !isPending(u)).map((u) => ({ email: u.email, label: u.name || u.email }));
+  const coordinator = event.coordinator_email;
+  const coordinatorName = activeUsers.find((u) => u.email === coordinator)?.label ?? coordinator;
+  // The coordinator doesn't request from themselves; migration 0011 not run means no coordinator (undefined).
+  const canRequest = !!coordinator && session.email !== coordinator;
 
   return (
     <>
       <Breadcrumbs base={browseHref(event.slug)} rootLabel={event.title} path={path} />
       <div className="flex flex-wrap items-end gap-3 mt-3">
         <h1 className="display text-4xl md:text-5xl flex-1 min-w-0 text-balance">{title}</h1>
+        {admin && event.coordinator_email !== undefined && (
+          <CoordinatorSelect slug={event.slug} current={coordinator ?? null} users={activeUsers} />
+        )}
+        {canRequest && (
+          <RequestPhotosButton event={event.slug} folderPath={path} folderName={title} coordinator={coordinatorName!} />
+        )}
         <ShareFolderButton event={event.slug} folderId={result.folder.id} folderPath={path} folderName={title} shares={shares} />
       </div>
-      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={session.role === "admin"} likes={likes} />
+      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={admin} likes={likes} />
     </>
   );
 }

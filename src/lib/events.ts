@@ -14,6 +14,8 @@ export type EventRow = {
   sort: number;
   hidden: boolean;
   created_at: string;
+  /** Marketing coordinator for photo requests (migration 0011): an app_users email, at most one per event. */
+  coordinator_email?: string | null;
 };
 
 let cached: { at: number; rows: EventRow[] } | null = null;
@@ -90,6 +92,18 @@ export async function deleteEvent(slug: string): Promise<boolean> {
   if (error) throw error;
   cached = null;
   return !!data?.length;
+}
+
+/** Admin only (checked by the caller). One coordinator per event: setting a new one replaces the old; null clears it. */
+export async function setCoordinator(eventId: string, email: string | null): Promise<void> {
+  const { error } = await db().from("events").update({ coordinator_email: email }).eq("id", eventId);
+  cached = null;
+  if (error) {
+    if (/coordinator_email/.test(error.message)) {
+      throw new Error("Run supabase/migrations/0011_photo_requests.sql in the Supabase SQL editor first.");
+    }
+    throw error;
+  }
 }
 
 /** Drops tracking query params (xsdata, sdata, ovuser…) that personalise the link. */
