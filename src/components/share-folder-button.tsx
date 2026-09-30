@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Link2, Loader2, Share2, X } from "lucide-react";
@@ -125,6 +125,13 @@ export function ShareDialog(props: {
 export function CreateShareForm({ fields }: { fields: Record<string, string> }) {
   const router = useRouter();
   const [state, action, pending] = useActionState<CreateShareState, FormData>(createShareLink, {});
+  const [agreed, setAgreed] = useState(false);
+  // Each new link needs a fresh tick.
+  const [lastCreated, setLastCreated] = useState(state.created);
+  if (state.created !== lastCreated) {
+    setLastCreated(state.created);
+    setAgreed(false);
+  }
 
   // New link: copy it straight away and refresh any lists.
   useEffect(() => {
@@ -139,6 +146,29 @@ export function CreateShareForm({ fields }: { fields: Record<string, string> }) 
         {Object.entries(fields).map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
         ))}
+        <div className="sm:col-span-3 rounded-md border border-border bg-background p-3 text-sm space-y-2">
+          <p className="font-medium">Before you share</p>
+          <ul className="list-disc pl-5 space-y-1 text-subtle">
+            <li>You are responsible for who receives this link and how the photos are used.</li>
+            <li>
+              Share photos as they are. If a photo needs editing, cropping or retouching, ask the design team to edit
+              it and re-upload it here, then share the updated version.
+            </li>
+            <li>Anyone with the link can view and download until it expires or you revoke it.</li>
+          </ul>
+          <label className="flex items-start gap-2 pt-1 cursor-pointer">
+            <input
+              type="checkbox"
+              name="consent"
+              value="yes"
+              required
+              checked={agreed}
+              onChange={(e) => setAgreed(e.currentTarget.checked)}
+              className="mt-0.5 size-4 accent-[var(--color-accent)]"
+            />
+            <span className="font-medium">I understand and take responsibility for sharing these files.</span>
+          </label>
+        </div>
         <label className="block">
           <span className="text-xs font-medium text-subtle">For (optional)</span>
           <input name="label" maxLength={120} placeholder="e.g. Reuters photo desk" className={`${field} mt-1`} />
@@ -154,7 +184,7 @@ export function CreateShareForm({ fields }: { fields: Record<string, string> }) 
           </select>
         </label>
         <button
-          disabled={pending}
+          disabled={pending || !agreed}
           className="h-10 px-4 rounded-md bg-accent text-accent-foreground text-sm font-medium inline-flex items-center justify-center gap-2 disabled:opacity-60"
         >
           {pending ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />} Create link

@@ -11,6 +11,9 @@ export type CreateShareState = { error?: string; created?: ShareRow };
 export async function createShareLink(_prev: CreateShareState, form: FormData): Promise<CreateShareState> {
   const session = await getSession();
   if (!session) return { error: EXPIRED };
+  if (form.get("consent") !== "yes") {
+    return { error: "Tick the box to confirm you take responsibility for sharing these files." };
+  }
 
   const folderId = String(form.get("folderId") ?? "");
   const expiry = String(form.get("expiry") ?? "30");
