@@ -8,7 +8,9 @@ import type { MediaItem } from "@/lib/onedrive/types";
 import { browseHref, cleanName, coverSrc, downloadHref, folderHref, formatBytes, itemKey, type Ref } from "@/lib/format";
 import type { LikeMap, LikeState } from "@/lib/like-types";
 import { getSelection, getServerSelection, setSelection, subscribeSelection, type Selection } from "@/lib/selection-store";
+import type { CompressOptions } from "@/lib/image-compress";
 import { downloadAsZip, type ZipProgress } from "@/lib/zip-download";
+import { CompressButton } from "./compress-dialog";
 import { Lightbox } from "./lightbox";
 import { ShareItemsButton } from "./share-items-button";
 
@@ -88,6 +90,14 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
       `${cleanName(folderName)} - ${selected.size} items.zip`,
     );
   };
+
+  const compressSelected = (opts: CompressOptions) =>
+    zip.start(
+      selectedItems.map(({ event, id, t, sig }) => ({ event, id, t, sig })),
+      `${cleanName(folderName)} - ${selected.size} items (compressed).zip`,
+      opts,
+    );
+  const canCompress = selectedItems.some((i) => i.kind === "folder" || i.isImage);
 
   const everything = folder ? [folder] : downloadAll;
 
@@ -225,7 +235,10 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
             ) : zip.error ? (
               <p className="text-sm text-red-300 flex-1">{zip.error}</p>
             ) : zip.progress?.phase === "done" && !selecting ? (
-              <p className="text-sm flex-1">Download complete: {plural(zip.progress.files, "file", "files")} saved.</p>
+              <p className="text-sm flex-1">
+                Download complete: {plural(zip.progress.files, zip.progress.compress ? "photo" : "file", zip.progress.compress ? "photos" : "files")}{" "}
+                saved{zip.progress.skipped ? `, ${plural(zip.progress.skipped, "other file", "other files")} left out` : ""}.
+              </p>
             ) : (
               <>
                 <p className="flex-1 flex items-baseline gap-2">
@@ -242,6 +255,7 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
                     folderName={folder && onThisPage ? folderName : undefined}
                   />
                 )}
+                {canCompress && <CompressButton items={selectedItems} onBatch={compressSelected} variant="bar" />}
                 <button
                   className="h-9 px-3 rounded-md bg-pencil text-foreground text-sm font-semibold inline-flex items-center gap-2 hover:brightness-110"
                   onClick={downloadSelected}
@@ -511,14 +525,18 @@ function SelectBox({ selected, onToggle }: { selected: boolean; onToggle: (range
 }
 
 function ZipStatus({ progress, onCancel }: { progress: ZipProgress; onCancel: () => void }) {
-  const pct = progress.totalBytes ? Math.min(100, (progress.bytes / progress.totalBytes) * 100) : 0;
+  const pct = progress.compress
+    ? progress.totalFiles ? (progress.files / progress.totalFiles) * 100 : 0
+    : progress.totalBytes ? Math.min(100, (progress.bytes / progress.totalBytes) * 100) : 0;
   return (
     <div className="flex-1 min-w-0">
       <div className="flex justify-between gap-3 text-sm mb-1.5">
         <span className="tabular-nums truncate">
           {progress.phase === "listing"
             ? "Preparing file list…"
-            : `Zipping ${plural(progress.files, "file", "files")}: ${formatBytes(progress.bytes)} of ${formatBytes(progress.totalBytes)}`}
+            : progress.compress
+              ? `Compressing ${progress.files} of ${plural(progress.totalFiles ?? 0, "photo", "photos")}`
+              : `Zipping ${plural(progress.files, "file", "files")}: ${formatBytes(progress.bytes)} of ${formatBytes(progress.totalBytes)}`}
         </span>
         <button className="text-white/70 hover:text-white" onClick={onCancel}>
           Cancel
@@ -594,12 +612,12 @@ function useZip() {
   const [error, setError] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
 
-  const start = async (items: Ref[], name: string) => {
+  const start = async (items: Ref[], name: string, compress?: CompressOptions) => {
     controller.current?.abort();
     const ctrl = (controller.current = new AbortController());
     setError(null);
     try {
-      await downloadAsZip(items, name, setProgress, ctrl.signal);
+      await downloadAsZip(items, name, setProgress, ctrl.signal, compress);
     } catch (e) {
       setProgress(null);
       if ((e as Error).name !== "AbortError") setError((e as Error).message);

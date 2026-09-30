@@ -21,6 +21,7 @@ import {
 import type { MediaItem } from "@/lib/onedrive/types";
 import { browseHref, cleanName, downloadHref, formatBytes, resizedPreview, streamHref } from "@/lib/format";
 import type { LikeState } from "@/lib/like-types";
+import { CompressButton } from "./compress-dialog";
 import { ShareItemsButton } from "./share-items-button";
 
 /** Team pages pass where "Share" links are created from; share-link visitors can't share. */
@@ -216,6 +217,7 @@ export function Lightbox({ items, index, onIndex, onClose, share, showDetails = 
         >
           <Download className="size-4" /> <span className="hidden sm:inline">Download</span>
         </a>
+        {item.isImage && <CompressButton key={`${item.event}/${item.id}`} items={[item]} variant="lightbox" />}
         {count > 1 && (
           <button
             aria-label={playing ? "Pause slideshow" : "Play slideshow"}

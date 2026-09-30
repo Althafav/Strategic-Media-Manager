@@ -91,12 +91,14 @@ export function ShareDialog(props: {
   title: string;
   description: string;
   children: React.ReactNode;
+  onClose?: () => void;
 }) {
-  const { ref, title, description, children } = props;
+  const { ref, title, description, children, onClose } = props;
   const close = (e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.closest("dialog")?.close();
   return (
     <dialog
       ref={ref}
+      onClose={onClose}
       aria-label={title}
       className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-lg border border-border bg-surface text-foreground p-0 backdrop:bg-black/50"
     >
