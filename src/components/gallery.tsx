@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowDownUp, Check, Download, FileText, Folder, Play, X } from "lucide-react";
+import { ArrowDownUp, Check, Download, FileText, Folder, Heart, Play, X } from "lucide-react";
+import { setLikeAction } from "@/app/likes/actions";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { browseHref, cleanName, coverSrc, downloadHref, folderHref, formatBytes, itemKey, type Ref } from "@/lib/format";
+import type { LikeMap, LikeState } from "@/lib/like-types";
 import { getSelection, getServerSelection, setSelection, subscribeSelection, type Selection } from "@/lib/selection-store";
 import { downloadAsZip, type ZipProgress } from "@/lib/zip-download";
 import { Lightbox } from "./lightbox";
@@ -26,11 +28,13 @@ type Props = {
   items: MediaItem[];
   /** Label for the order `items` arrive in when it isn't by name, e.g. "Relevance" for search results. */
   listedOrder?: string;
+  /** Team pages: like counts keyed by `itemKey`. Omitted on share pages, which hides the like buttons. */
+  likes?: LikeMap;
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder }: Props) {
+export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder, likes }: Props) {
   const [sort, setSort] = useStoredSort(listedOrder ? "smm:sort:listed" : "smm:sort", listedOrder ? "listed" : "name-asc");
   const [filter, setFilter] = useState<FileKind | "all">("all");
   const allFiles = useMemo(() => items.filter((i) => i.kind === "file"), [items]);
@@ -44,6 +48,7 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
   const [open, setOpen] = useState<number | null>(null);
   const lastClicked = useRef<number | null>(null);
   const zip = useZip();
+  const like = useLikes(likes);
 
   const selecting = selected.size > 0;
   const selectedBytes = selectedItems.reduce((n, i) => n + i.size, 0);
@@ -198,6 +203,8 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
               selected={selected.has(itemKey(f))}
               onOpen={(e) => (selecting ? toggle(i, files, e.shiftKey) : setOpen(i))}
               onToggle={(range) => toggle(i, files, range)}
+              like={like.enabled ? like.get(f) : undefined}
+              onLike={() => like.toggle(f)}
             />
           ))}
         </section>
@@ -265,6 +272,8 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
           onClose={() => setOpen(null)}
           share={canShare ? { folderId: folder?.id, folderPath: path } : undefined}
           showDetails={showDetails}
+          like={like.enabled ? like.get(files[open]) : undefined}
+          onLike={like.toggle}
         />
       )}
     </>
@@ -424,8 +433,10 @@ function FileTile(props: {
   selected: boolean;
   onOpen: (e: React.MouseEvent) => void;
   onToggle: (range: boolean) => void;
+  like?: LikeState;
+  onLike: () => void;
 }) {
-  const { item, selected, onOpen, onToggle } = props;
+  const { item, selected, onOpen, onToggle, like, onLike } = props;
   return (
     <div className={`group relative aspect-square overflow-hidden ${selected ? "bg-surface" : "bg-muted"}`}>
       <button className="size-full block" onClick={onOpen} aria-label={`Open ${item.name}`}>
@@ -459,7 +470,26 @@ function FileTile(props: {
       </button>
       {selected && <PencilMark />}
       <SelectBox selected={selected} onToggle={onToggle} />
+      {like && <LikeBadge like={like} onLike={onLike} />}
     </div>
+  );
+}
+
+/** Heart + count in the tile corner: always shown once liked, otherwise on hover. */
+function LikeBadge({ like, onLike }: { like: LikeState; onLike: () => void }) {
+  return (
+    <button
+      aria-label={like.mine ? "Unlike" : "Like"}
+      aria-pressed={like.mine}
+      title={like.mine ? "Unlike" : "Like"}
+      onClick={onLike}
+      className={`absolute top-2 right-2 z-20 h-6 min-w-6 px-1.5 rounded-full bg-foreground/60 text-white text-xs tabular-nums inline-flex items-center justify-center gap-1 transition hover:bg-foreground/80 ${
+        like.count > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+      }`}
+    >
+      <Heart className={`size-3.5 ${like.mine ? "fill-current" : ""}`} strokeWidth={2.25} />
+      {like.count > 0 && like.count}
+    </button>
   );
 }
 
@@ -537,6 +567,26 @@ function useSelection(persist: boolean, items: MediaItem[], path: string[]) {
       [setSelected],
     ),
   };
+}
+
+/** Like counts from the server plus this visitor's changes since, saved optimistically. */
+function useLikes(initial: LikeMap | undefined) {
+  const [changed, setChanged] = useState<LikeMap>({});
+  const get = (r: Ref): LikeState => changed[itemKey(r)] ?? initial?.[itemKey(r)] ?? { count: 0, mine: false };
+  const toggle = async (item: MediaItem) => {
+    const key = itemKey(item);
+    const before = get(item);
+    const wanted = !before.mine;
+    setChanged((m) => ({ ...m, [key]: { count: Math.max(0, before.count + (wanted ? 1 : -1)), mine: wanted } }));
+    const result = await setLikeAction(item.event, item.id, wanted).catch(() => ({ error: "Could not save the like." }));
+    if ("error" in result) {
+      setChanged((m) => ({ ...m, [key]: before }));
+      alert(result.error);
+    } else {
+      setChanged((m) => ({ ...m, [key]: result }));
+    }
+  };
+  return { enabled: !!initial, get, toggle };
 }
 
 function useZip() {

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Link2, LogOut, Search, Users } from "lucide-react";
+import { Heart, Link2, LogOut, Search, Users } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { getSession } from "@/lib/auth";
 import { isPending, listUsers } from "@/lib/users";
@@ -40,6 +40,14 @@ export async function Header() {
               />
             </form>
             <nav className="flex items-center">
+              <Link
+                href="/top"
+                title="Most liked"
+                className="h-9 px-2.5 rounded-md text-sm text-subtle hover:text-foreground hover:bg-background inline-flex items-center gap-2"
+              >
+                <Heart className="size-4" />
+                <span className="hidden md:inline">Most liked</span>
+              </Link>
               <Link
                 href="/shares"
                 title="Shared links"

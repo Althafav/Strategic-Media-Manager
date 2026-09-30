@@ -6,7 +6,8 @@ import { ShareFolderButton } from "@/components/share-folder-button";
 import { getEvent } from "@/lib/events";
 import { browseHref, cleanName } from "@/lib/format";
 import { getFolder, NotFoundError } from "@/lib/onedrive/client";
-import { listShares, ownerFilter } from "@/lib/shares";
+import { getEventLikes } from "@/lib/likes";
+import { listShares, ownerFilter, shareOwner } from "@/lib/shares";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,10 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
   // null when the shares table doesn't exist yet (migration 0003 not run).
   const session = await getSession();
   if (!session) redirect("/login");
-  const shares = await listShares({ eventId: event.id, folderId: result.folder.id, createdBy: ownerFilter(session) }).catch(() => null);
+  const [shares, likes] = await Promise.all([
+    listShares({ eventId: event.id, folderId: result.folder.id, createdBy: ownerFilter(session) }).catch(() => null),
+    getEventLikes(event.id, event.slug, shareOwner(session)).catch(() => ({})),
+  ]);
 
   return (
     <>
@@ -49,7 +53,7 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
         <h1 className="display text-4xl md:text-5xl flex-1 min-w-0 text-balance">{title}</h1>
         <ShareFolderButton event={event.slug} folderId={result.folder.id} folderPath={path} folderName={title} shares={shares} />
       </div>
-      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={session.role === "admin"} />
+      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={session.role === "admin"} likes={likes} />
     </>
   );
 }

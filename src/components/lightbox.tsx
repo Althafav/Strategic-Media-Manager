@@ -8,6 +8,7 @@ import {
   Download,
   FileText,
   FolderOpen,
+  Heart,
   ImageOff,
   Info,
   Loader2,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { browseHref, cleanName, downloadHref, formatBytes, resizedPreview, streamHref } from "@/lib/format";
+import type { LikeState } from "@/lib/like-types";
 import { ShareItemsButton } from "./share-items-button";
 
 /** Team pages pass where "Share" links are created from; share-link visitors can't share. */
@@ -32,6 +34,9 @@ type Props = {
   share?: LightboxShare;
   /** Details panel (name, camera, size…): admin only. */
   showDetails?: boolean;
+  /** The current item's likes (team pages only; omitted hides the heart). */
+  like?: LikeState;
+  onLike?: (item: MediaItem) => void;
 };
 
 type ZoomCommand = "toggle" | "in" | "out" | "reset";
@@ -41,7 +46,7 @@ const INFO_KEY = "smm:lightbox-info";
 
 const dateTimeFmt = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" });
 
-export function Lightbox({ items, index, onIndex, onClose, share, showDetails = false }: Props) {
+export function Lightbox({ items, index, onIndex, onClose, share, showDetails = false, like, onLike }: Props) {
   const item = items[index];
   const root = useRef<HTMLDivElement>(null);
   const zoom = useRef<((cmd: ZoomCommand) => void) | null>(null);
@@ -117,6 +122,10 @@ export function Lightbox({ items, index, onIndex, onClose, share, showDetails = 
         case "F":
           if (canFullscreen) toggleFullscreen();
           break;
+        case "l":
+        case "L":
+          if (like) onLike?.(item);
+          break;
         default:
           return;
       }
@@ -178,6 +187,18 @@ export function Lightbox({ items, index, onIndex, onClose, share, showDetails = 
         <span className="text-xs text-white/60 tabular-nums px-1">
           {index + 1} / {count}
         </span>
+        {like && (
+          <button
+            aria-label={like.mine ? "Unlike" : "Like"}
+            title={like.mine ? "Unlike (L)" : "Like (L)"}
+            aria-pressed={like.mine}
+            onClick={() => onLike?.(item)}
+            className="h-9 px-2.5 rounded-md hover:bg-white/10 text-sm tabular-nums inline-flex items-center gap-1.5"
+          >
+            <Heart className={`size-4 ${like.mine ? "fill-current" : ""}`} />
+            {like.count > 0 && like.count}
+          </button>
+        )}
         {share && <ShareItemsButton items={[item]} folderId={share.folderId} folderPath={share.folderPath} />}
         {item.location && (
           <Link
@@ -281,6 +302,7 @@ function InfoPanel({ item }: { item: MediaItem }) {
     ["Z", "Zoom in / out"],
     ["+ − 0", "Zoom step / reset"],
     ["I", "Details"],
+    ["L", "Like"],
     ["F", "Full screen"],
     ["Esc", "Close"],
   ];
