@@ -7,7 +7,9 @@ import { ShareStatus } from "@/components/share-link-actions";
 import { cleanName, downloadHref, formatBytes, shareHref, withPreviews } from "@/lib/format";
 import { getFolder, getItems, NotFoundError } from "@/lib/onedrive/client";
 import type { MediaItem } from "@/lib/onedrive/types";
+import { canViewShare } from "@/lib/share-emails";
 import { getActiveShare, signItem } from "@/lib/shares";
+import { EmailGate } from "../email-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +32,8 @@ const orNotFound = (e: unknown): never => {
 export async function generateMetadata({ params }: PageProps<"/s/[token]/[[...path]]">): Promise<Metadata> {
   const { token, path = [] } = await params;
   const active = await lookup(token);
-  const name = path.length ? decode(path.at(-1)!) : active?.share.folder_name;
+  // Before the email gate, don't reveal the folder name.
+  const name = !active || !(await canViewShare(token)) ? null : path.length ? decode(path.at(-1)!) : active.share.folder_name;
   return {
     title: `${name ? cleanName(name) : "Shared folder"} · Strategic Media`,
     robots: { index: false, follow: false },
@@ -39,7 +42,8 @@ export async function generateMetadata({ params }: PageProps<"/s/[token]/[[...pa
 
 /**
  * Public view of one share link: a folder subtree, or a hand-picked set of items (`item_ids`)
- * where only picked folders can be opened. No login.
+ * where only picked folders can be opened. No login, but visitors must enter an email first (lib/share-emails.ts);
+ * team members skip that.
  */
 export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...path]]">) {
   const { token, path: rawPath = [] } = await params;
@@ -54,8 +58,11 @@ export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...
     );
   }
 
-  const { share, event } = active;
   const path = rawPath.map(decode);
+  // Nothing from OneDrive is loaded until the visitor has entered an email.
+  if (!(await canViewShare(token))) return <EmailGate token={token} back={shareHref(token, path)} />;
+
+  const { share, event } = active;
   const picked = share.item_ids?.length ? share.item_ids : null;
 
   // Sign every item so the media APIs can check it belongs to this share, and build its /api/thumb

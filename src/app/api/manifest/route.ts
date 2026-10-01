@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getEvent } from "@/lib/events";
 import { buildManifest, isValidId, NotFoundError, type ManifestEntry } from "@/lib/onedrive/client";
+import { canViewShare } from "@/lib/share-emails";
 import { getActiveShare, recordDownload, signItem, verifyItem } from "@/lib/shares";
 
 type Ref = { event: string; id: string; sig?: string };
@@ -24,7 +25,8 @@ export async function POST(req: Request) {
     const token = new URL(req.url).searchParams.get("t");
     if (token) {
       const active = await getActiveShare(token).catch(() => null);
-      if (!active || !refs.every((r) => verifyItem(token, r.id, r.sig ?? null))) {
+      // canViewShare: the visitor has passed the email gate (or is a team member).
+      if (!active || !refs.every((r) => verifyItem(token, r.id, r.sig ?? null)) || !(await canViewShare(token))) {
         return Response.json({ error: "This link has expired or was removed." }, { status: 403 });
       }
       await buildManifest(active.event.share_url, active.event.slug, refs.map((r) => r.id), files);

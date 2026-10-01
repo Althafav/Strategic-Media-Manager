@@ -37,13 +37,15 @@ src/lib/users.ts                app_users allowlist for Microsoft SSO (admin-man
 src/lib/sso.ts                  AIM Congress SSO broker URL + state cookie (the returned ?email= is unsigned, see file comment)
 src/lib/shares.ts               private share links (server-only: db + node:crypto)
 src/lib/share-types.ts          client-safe share types/helpers (EXPIRY_OPTIONS, isExpired, formatDate)
+src/lib/share-emails.ts         share-link email gate: signed per-link cookie, canViewShare, share_emails queries (server-only)
 src/lib/access.ts               decides which event a media API request may read (session or signed share item)
 src/lib/format.ts               URL builders: browseHref, shareHref, downloadHref, coverSrc, thumbSrc (carry t/sig)
 src/lib/zip-download.ts         browser-side zip: /api/manifest -> fetch OneDrive URLs -> client-zip -> disk
 src/lib/sync/delta-sync.ts      OneDrive delta feed -> Supabase `nodes` (resumable cursor + `locked_until` lease in `event_sync`)
 src/lib/sync/status.ts          per-event index status for the event cards (server-only), plain-language sync errors
 src/app/e/[slug]/[[...path]]    event folder browser (team)
-src/app/s/[token]/[[...path]]   shared folder / picked-items view (external, no login)
+src/app/s/[token]/[[...path]]   shared folder / picked-items view (external, no login; email gate first: s/[token]/email-gate.tsx + actions.ts)
+src/app/share-emails            admin-only: emails entered at share links, filter ?share=<token>, CSV export (export/route.ts)
 src/app/shares                  list/revoke share links (own links; admin sees all + creator) + server actions
 src/app/events                  add/remove event server actions, /events/new form
 src/app/login                   login page (Microsoft button + admin password form) + login/logout actions
@@ -101,6 +103,12 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
    - Thumbnails/previews are built by `withPreviews` (`format.ts`) as `/api/thumb` URLs carrying
      `t`/`sig`; `toMediaItem` emits only `hasThumb`. Never embed a raw OneDrive thumbnail URL in a page.
    - `proxy.ts` lets `/s/*` through, and lets media APIs through only when `t` is present.
+   - **Email gate** (migration 0014, `lib/share-emails.ts`): a visitor must enter an email before the share
+     page loads anything from OneDrive. `submitShareEmail` stores it in `share_emails` and sets the signed cookie
+     `smm_gate_<token>` (path `/`, 30 days). The page, `resolveItemAccess` and `/api/manifest` require it via
+     `canViewShare` (team sessions skip the gate, and nothing is recorded for them). Emails aren't verified,
+     and each link stores at most 2,000 distinct ones. Only the admin sees them (`/share-emails`). Views are
+     still counted on first open, before the gate.
    - Views are counted once per browser session via a session cookie scoped to `/s/<token>`.
    - Downloads are counted per click (`recordDownload`, migration 0006): `/api/download` redirects with `t`, and
      `/api/manifest` with `t` (one zip, plus its file count). Not counted: `?json=1` URL refreshes, and `?stream=1`
@@ -143,7 +151,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
@@ -151,6 +159,7 @@ here; DDL can't be run from the app. Tables:
 - `shares`
 - `app_users` (SSO allowlist; `status` active/pending: unknown Microsoft sign-ins are stored as pending until an admin approves)
 - `photo_likes` (one row per team member per liked item; owner = `shareOwner`; team only, never on share pages)
+- `share_emails` (one row per link + email entered at the gate; `record_share_email` RPC upserts and enforces the cap; `share_id` set null when the link is deleted)
 - `photo_requests` (a team member asks the event's coordinator for photos; `requested_by`/`resolved_by` = `shareOwner`).
   `events.coordinator_email` is the marketing coordinator: at most one per event, set only by the admin
   (`setEventCoordinator`, must be an active app_user) on /settings or the Add event form. /settings also renames

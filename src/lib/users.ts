@@ -35,7 +35,7 @@ export async function isAllowedUser(email: string | undefined): Promise<boolean>
 /** Records a sign-in attempt from an unknown email. Returns the resulting status, or null if it couldn't be stored. */
 export async function requestAccess(email: string): Promise<"active" | "pending" | null> {
   const e = normalizeEmail(email);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || e.length > 254) return null;
+  if (!isValidEmail(e)) return null;
   const rows = await listUsers();
   const existing = rows.find((u) => u.email === e);
   if (existing) return isPending(existing) ? "pending" : "active";
@@ -60,11 +60,16 @@ export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+/** Shape check for a normalized email. Nothing is sent to verify it. */
+export function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
+}
+
 export type AddUserResult = { ok: true } | { ok: false; error: string };
 
 export async function addUser(input: { email: string; name?: string }): Promise<AddUserResult> {
   const email = normalizeEmail(input.email);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return { ok: false, error: "Enter a valid email address." };
+  if (!isValidEmail(email)) return { ok: false, error: "Enter a valid email address." };
   const name = input.name?.trim().slice(0, 120) || null;
 
   const { error } = await db().from("app_users").insert({ email, name });

@@ -30,6 +30,12 @@ the authoritative per-layer rules.
   signs each item it renders, `sig = HMAC(AUTH_SECRET, "share:<token>:<id>")`; media requests carry
   `?t=&sig=` and `lib/access.ts` `resolveItemAccess` verifies both. Sigs can't be forged, and a
   token only ever resolves items within its own event's drive.
+- Email gate (`lib/share-emails.ts`, migration 0014): a share page shows only an email form, and
+  loads nothing from OneDrive, until the visitor submits an email. That sets the httpOnly cookie
+  `smm_gate_<token>` = `HMAC(AUTH_SECRET, "gate:<token>")` (path `/`, 30 days). The page,
+  `resolveItemAccess` and `/api/manifest` all require it (`canViewShare`), or a team session. So a
+  copied `?t=&sig=` URL doesn't work in a browser that never passed the gate. Emails aren't verified,
+  and each link stores at most 2,000 distinct emails. Only the admin can read them (`/share-emails`).
 - Path traversal is blocked: `getFolder` rejects `.`, `..` and slashes, and resolves relative to the
   share's `folder_id`, so a visitor cannot climb above the shared folder.
 - Fails closed: share lookups `.catch(() => null)`; revoked/expired shares resolve to `null` → 403.
