@@ -94,6 +94,13 @@ export async function deleteEvent(slug: string): Promise<boolean> {
   return !!data?.length;
 }
 
+/** Admin only (checked by the caller). Changes the display name only; the slug (and so every link) stays the same. */
+export async function renameEvent(eventId: string, title: string): Promise<void> {
+  const { error } = await db().from("events").update({ title: title.trim().slice(0, 120) }).eq("id", eventId);
+  cached = null;
+  if (error) throw error;
+}
+
 /** Admin only (checked by the caller). One coordinator per event: setting a new one replaces the old; null clears it. */
 export async function setCoordinator(eventId: string, email: string | null): Promise<void> {
   const { error } = await db().from("events").update({ coordinator_email: email }).eq("id", eventId);

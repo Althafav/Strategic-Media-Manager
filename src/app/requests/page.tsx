@@ -1,60 +1,81 @@
 import Link from "next/link";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { listEvents } from "@/lib/events";
-import { browseHref, cleanName } from "@/lib/format";
-import { isCoordinator, listAssigned, listMine, STATUS_LABEL, type PhotoRequestRow, type RequestStatus } from "@/lib/requests";
+import type { MediaItem } from "@/lib/onedrive/types";
+import { isUnseenAnswer } from "@/lib/request-types";
+import {
+  isCoordinator,
+  listAssigned,
+  listMine,
+  markSentSeen,
+  pendingCountFor,
+  requestMedia,
+  unseenAnswersFor,
+  type PhotoRequestRow,
+} from "@/lib/requests";
 import { formatDate } from "@/lib/share-types";
 import { listUsers } from "@/lib/users";
 import { RequestControls } from "./request-controls";
+import { handledBy, RequestWhere, StatusChip } from "./request-parts";
+import { RequestedItems } from "./requested-items";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Photo requests · Strategic Media Manager" };
 
-const CHIP: Record<RequestStatus, string> = {
-  pending: "bg-amber-500/20",
-  in_progress: "bg-sky-500/15",
-  fulfilled: "bg-green-600/15",
-  declined: "bg-muted",
-};
+const MIGRATION_0011 = (
+  <p className="text-sm rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+    Photo requests aren&apos;t set up yet. Run <code>supabase/migrations/0011_photo_requests.sql</code> in the Supabase SQL
+    editor.
+  </p>
+);
 
-export default async function RequestsPage() {
+export default async function RequestsPage({ searchParams }: PageProps<"/requests">) {
   const session = await getSession();
   if (!session) redirect("/login?next=/requests");
   const coordinator = await isCoordinator(session);
-  const [assigned, mine, events, users] = await Promise.all([
-    coordinator ? listAssigned(session).catch(() => null) : [],
-    listMine(session).catch(() => null),
+  // Coordinators (and the admin) land on what they need to handle; everyone else only has Sent.
+  const tab = coordinator && (await searchParams).tab !== "sent" ? "inbox" : "sent";
+
+  const [inbox, sent, events, users, newCount, replyCount] = await Promise.all([
+    tab === "inbox" ? listAssigned(session).catch(() => null) : null,
+    tab === "sent" ? listMine(session).catch(() => null) : null,
     listEvents({ includeHidden: true }),
     listUsers().catch(() => []),
+    coordinator ? pendingCountFor(session).catch(() => 0) : 0,
+    unseenAnswersFor(session).catch(() => 0),
   ]);
+  const rows = inbox ? [...inbox.open, ...inbox.answered] : (sent ?? []);
+  const media = await requestMedia(rows, events).catch(() => new Map<string, MediaItem[]>());
   const eventById = new Map(events.map((e) => [e.id, e]));
   const nameByEmail = new Map(users.map((u) => [u.email, u.name || u.email]));
   const person = (owner: string | null | undefined) =>
     owner === "admin" ? "Admin" : owner ? (nameByEmail.get(owner) ?? owner) : "Unknown";
-  const open = assigned?.filter((r) => r.status === "pending" || r.status === "in_progress") ?? [];
-  const answered = assigned?.filter((r) => r.status === "fulfilled" || r.status === "declined") ?? [];
 
-  const where = (r: PhotoRequestRow) => {
+  // Viewing Sent shows the new replies once (highlighted below), then clears them from the badge.
+  if (tab === "sent" && sent?.some(isUnseenAnswer)) after(() => markSentSeen(session).catch(() => {}));
+
+  const body = (r: PhotoRequestRow) => {
     const event = eventById.get(r.event_id);
-    const label = [event?.title ?? "Unknown event", ...r.folder_path.map(cleanName)].join(" / ");
-    return event ? (
-      <Link href={browseHref(event.slug, r.folder_path)} className="text-sm text-subtle hover:text-foreground truncate block">
-        {label}
-      </Link>
-    ) : (
-      <p className="text-sm text-subtle truncate">{label}</p>
+    const items = media.get(r.id);
+    const href = `/requests/${r.id}`;
+    return (
+      <>
+        <RequestWhere request={r} event={event} />
+        <Link href={href} className="block mt-1 whitespace-pre-wrap break-words hover:underline underline-offset-4">
+          {r.message}
+        </Link>
+        {items?.length ? <RequestedItems href={href} items={items} /> : null}
+      </>
     );
   };
 
-  const assignedRow = (r: PhotoRequestRow) => (
+  const inboxRow = (r: PhotoRequestRow) => (
     <li key={r.id} className="px-4 py-3 space-y-2">
       <div className="flex flex-wrap items-start gap-x-4 gap-y-1">
-        <div className="flex-1 min-w-60">
-          {where(r)}
-          <p className="whitespace-pre-wrap break-words mt-1">{r.message}</p>
-        </div>
-        <div className="text-xs text-subtle w-44">
+        <div className="flex-1 min-w-60">{body(r)}</div>
+        <div className="text-xs text-subtle w-44 space-y-0.5">
           <p className="truncate" title={r.requested_by}>
             From {person(r.requested_by)}
           </p>
@@ -62,95 +83,106 @@ export default async function RequestsPage() {
           <StatusChip status={r.status} />
         </div>
       </div>
-      <RequestControls id={r.id} status={r.status} note={r.coordinator_note} />
+      {/* key: start from the saved note again after each answer */}
+      <RequestControls key={`${r.status}:${r.coordinator_note ?? ""}`} id={r.id} status={r.status} note={r.coordinator_note} />
     </li>
   );
+
+  const sentRow = (r: PhotoRequestRow) => {
+    const unseen = isUnseenAnswer(r);
+    const by = handledBy(r, eventById.get(r.event_id));
+    return (
+      <li key={r.id} className={`flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3 ${unseen ? "bg-amber-500/5" : ""}`}>
+        <div className="flex-1 min-w-60">
+          {body(r)}
+          {r.coordinator_note && (
+            <p className="mt-2 text-sm rounded-md bg-background border border-border px-3 py-2 whitespace-pre-wrap break-words">
+              <span className="font-medium">{person(by)}:</span> {r.coordinator_note}
+            </p>
+          )}
+        </div>
+        <div className="text-xs text-subtle w-44 space-y-0.5">
+          <p>Sent {formatDate(r.created_at)}</p>
+          {by && (
+            <p className="truncate">
+              {r.resolved_by ? "Answered by" : "To"} {person(by)}
+            </p>
+          )}
+          <p className="flex items-center gap-1.5">
+            <StatusChip status={r.status} />
+            {unseen && <span className="font-medium text-foreground">New reply</span>}
+          </p>
+        </div>
+      </li>
+    );
+  };
+
+  const tabLink = (id: "inbox" | "sent", label: string, count: number) => (
+    <Link
+      href={`/requests?tab=${id}`}
+      aria-current={tab === id ? "page" : undefined}
+      className={`h-8 px-3 rounded-[5px] text-sm inline-flex items-center gap-2 ${
+        tab === id ? "bg-accent text-accent-foreground" : "text-subtle hover:text-foreground"
+      }`}
+    >
+      {label}
+      {count > 0 && (
+        <span className="min-w-5 h-5 px-1.5 rounded-full bg-amber-500/25 text-xs text-foreground grid place-items-center">{count}</span>
+      )}
+    </Link>
+  );
+
+  const empty = (text: string) => <p className="rounded-lg border border-border bg-surface px-4 py-6 text-center text-subtle">{text}</p>;
 
   return (
     <div className="max-w-4xl">
       <div className="pt-10 mb-6">
         <h1 className="display text-5xl">Photo requests</h1>
         <p className="text-subtle mt-1">
-          Ask an event&apos;s marketing coordinator for photos with <strong>Request photos</strong> on the event page.
+          Ask an event&apos;s marketing coordinator for photos: use <strong>Request photos</strong> on the event page, or
+          select photos and click <strong>Request</strong>.
         </p>
+        {coordinator && (
+          <nav aria-label="Requests" className="mt-4 inline-flex rounded-md border border-border bg-surface p-0.5">
+            {tabLink("inbox", session.role === "admin" ? "Inbox (all events)" : "Inbox", newCount)}
+            {tabLink("sent", "Sent", replyCount)}
+          </nav>
+        )}
       </div>
 
-      {mine === null ? (
-        <p className="text-sm rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-          Photo requests aren&apos;t set up yet. Run <code>supabase/migrations/0011_photo_requests.sql</code> in the
-          Supabase SQL editor.
-        </p>
-      ) : (
-        <>
-          {coordinator && assigned && (
-            <section className="mb-10">
-              <h2 className="font-medium mb-2">
-                {session.role === "admin" ? "All requests" : "Assigned to me"}{" "}
-                <span className="text-subtle font-normal">({open.length} open)</span>
-              </h2>
-              {open.length === 0 ? (
-                <p className="rounded-lg border border-border bg-surface px-4 py-6 text-center text-subtle">No open requests.</p>
-              ) : (
-                <ul className="divide-y divide-border rounded-lg border border-amber-500/30 bg-surface">{open.map(assignedRow)}</ul>
-              )}
-              {answered.length > 0 && (
-                <details className="mt-4">
-                  <summary className="cursor-pointer text-sm text-subtle hover:text-foreground">
-                    Answered ({answered.length})
-                  </summary>
-                  <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-surface">
-                    {answered.map(assignedRow)}
-                  </ul>
-                </details>
-              )}
-            </section>
-          )}
-
-          <section>
+      {tab === "inbox" ? (
+        inbox === null ? (
+          MIGRATION_0011
+        ) : (
+          <>
             <h2 className="font-medium mb-2">
-              My requests <span className="text-subtle font-normal">({mine.length})</span>
+              Open <span className="text-subtle font-normal">({inbox.open.length}, oldest first)</span>
             </h2>
-            {mine.length === 0 ? (
-              <p className="rounded-lg border border-border bg-surface px-4 py-6 text-center text-subtle">
-                You haven&apos;t requested any photos yet.
-              </p>
+            {inbox.open.length === 0 ? (
+              empty("Nothing waiting. New requests show up here.")
             ) : (
-              <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-                {mine.map((r) => {
-                  const event = eventById.get(r.event_id);
-                  return (
-                    <li key={r.id} className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3">
-                      <div className="flex-1 min-w-60">
-                        {where(r)}
-                        <p className="whitespace-pre-wrap break-words mt-1">{r.message}</p>
-                        {r.coordinator_note && (
-                          <p className="mt-2 text-sm rounded-md bg-background border border-border px-3 py-2 whitespace-pre-wrap break-words">
-                            <span className="font-medium">{person(r.resolved_by ?? event?.coordinator_email)}:</span>{" "}
-                            {r.coordinator_note}
-                          </p>
-                        )}
-                      </div>
-                      <div className="text-xs text-subtle w-44">
-                        <p>Sent {formatDate(r.created_at)}</p>
-                        {event?.coordinator_email && <p className="truncate">To {person(event.coordinator_email)}</p>}
-                        <StatusChip status={r.status} />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              <ul className="divide-y divide-border rounded-lg border border-amber-500/30 bg-surface">{inbox.open.map(inboxRow)}</ul>
             )}
-          </section>
-        </>
+            {inbox.answered.length > 0 && (
+              <details className="mt-6">
+                <summary className="cursor-pointer text-sm text-subtle hover:text-foreground">
+                  Answered ({inbox.answered.length}
+                  {inbox.answered.length === 100 ? ", latest 100" : ""})
+                </summary>
+                <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-surface">
+                  {inbox.answered.map(inboxRow)}
+                </ul>
+              </details>
+            )}
+          </>
+        )
+      ) : sent === null ? (
+        MIGRATION_0011
+      ) : sent.length === 0 ? (
+        empty("You haven't requested any photos yet.")
+      ) : (
+        <ul className="divide-y divide-border rounded-lg border border-border bg-surface">{sent.map(sentRow)}</ul>
       )}
     </div>
-  );
-}
-
-function StatusChip({ status }: { status: RequestStatus }) {
-  return (
-    <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs text-foreground ${CHIP[status]}`}>
-      {STATUS_LABEL[status]}
-    </span>
   );
 }

@@ -47,7 +47,7 @@ src/app/events                  add/remove event server actions, /events/new for
 src/app/login                   login page (Microsoft button + admin password form) + login/logout actions
 src/app/api/auth/sso, sso-login Microsoft SSO start (sets state cookie) and broker callback (creates user session)
 src/app/users                   admin-only: add/remove SSO users, approve/reject pending access requests
-src/app/requests                photo requests: "My requests" for everyone, "Assigned to me" for an event's coordinator (admin sees all) + server actions
+src/app/requests                photo requests: Inbox tab (event's coordinator; admin sees all) / Sent tab (own requests), /requests/[id] shows the picked photos in the Gallery
 src/lib/requests.ts             photo_requests queries + canHandle (server-only); client-safe types/labels in request-types.ts
 src/app/search                  index search (Supabase `search_nodes` RPC)
 src/app/top                     most liked photos (`top_liked` RPC, event filter `?e=`); likes live in `photo_likes` via `lib/likes.ts` + `app/likes/actions.ts`
@@ -139,7 +139,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
@@ -149,7 +149,12 @@ here; DDL can't be run from the app. Tables:
 - `photo_likes` (one row per team member per liked item; owner = `shareOwner`; team only, never on share pages)
 - `photo_requests` (a team member asks the event's coordinator for photos; `requested_by`/`resolved_by` = `shareOwner`).
   `events.coordinator_email` is the marketing coordinator: at most one per event, set only by the admin
-  (`setEventCoordinator`, must be an active app_user). Only the admin or that coordinator may answer (`canHandle`).
+  (`setEventCoordinator`, must be an active app_user) on /settings or the Add event form. /settings also renames
+  events (`renameEventAction`; title only, the slug and links stay). Only the admin or that coordinator may answer (`canHandle`).
+  `items` (0012) holds photos picked in the selection bar ("Request", event pages only): `[{id,name,kind,path}]`, up to 200;
+  `path` is each item's own folder (a selection can span folders) and `folder_path` their common parent. Older rows
+  lack `path`: fall back to `folder_path`. Requesting items already in one of your open requests is refused.
+  `requester_seen_at` (0013) drives the "new reply" badge: `unseen_request_answers(owner)` RPC; opening Sent marks seen.
 
 Deleting an event cascades to nodes, sync state and shares. RLS is on with no policies: only the service role
 reads or writes.

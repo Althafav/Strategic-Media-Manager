@@ -58,7 +58,7 @@ export function EventCard({ slug, title, rootId, itemCount, size, sync, canRemov
       </Link>
       {/* Siblings of the link (not inside it) so clicking them never opens the event. Revealed on hover where hover exists,
           except "Sync now", which stays visible when the index needs attention. */}
-      <div className="absolute top-3 right-3 flex items-start gap-2">
+      <div className="absolute top-3 right-3 flex items-center gap-2">
         <SyncEventButton slug={slug} title={title} revealClass={needsAttention ? "" : REVEAL} />
         {canRemove && <RemoveEventButton slug={slug} title={title} className={REVEAL} />}
       </div>

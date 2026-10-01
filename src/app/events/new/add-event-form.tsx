@@ -7,7 +7,8 @@ import { addEvent, type AddEventState } from "../actions";
 const input =
   "w-full h-10 rounded-md bg-surface border border-border px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/25";
 
-export function AddEventForm() {
+/** `users`: active team members the admin can pick as the marketing coordinator. */
+export function AddEventForm({ users }: { users: { email: string; label: string }[] }) {
   const [state, action, pending] = useActionState<AddEventState, FormData>(addEvent, {});
 
   return (
@@ -40,6 +41,22 @@ export function AddEventForm() {
         </span>
       </label>
 
+      <label className="block">
+        <span className="text-sm font-medium">
+          Marketing coordinator <span className="text-subtle font-normal">(optional)</span>
+        </span>
+        <select name="coordinator" defaultValue={state.values?.coordinator ?? ""} className={`${input} mt-1.5`}>
+          <option value="">None</option>
+          {users.map((u) => (
+            <option key={u.email} value={u.email}>
+              {u.label}
+            </option>
+          ))}
+        </select>
+        <span className="block text-xs text-subtle mt-1.5">
+          Receives this event&apos;s photo requests. You can change it later in Settings.
+        </span>
+      </label>
 
       {state.error && (
         <p role="alert" className="text-sm rounded-md border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 px-3 py-2">

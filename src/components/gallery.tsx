@@ -12,6 +12,7 @@ import type { CompressOptions } from "@/lib/image-compress";
 import { downloadAsZip, type ZipProgress } from "@/lib/zip-download";
 import { CompressButton } from "./compress-dialog";
 import { Lightbox } from "./lightbox";
+import { RequestItemsButton } from "./request-photos-button";
 import { ShareItemsButton } from "./share-items-button";
 
 type Props = {
@@ -32,11 +33,13 @@ type Props = {
   listedOrder?: string;
   /** Team pages: like counts keyed by `itemKey`. Omitted on share pages, which hides the like buttons. */
   likes?: LikeMap;
+  /** Event pages with a coordinator: their name, which shows "Request" for the selection. */
+  requestTo?: string;
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder, likes }: Props) {
+export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder, likes, requestTo }: Props) {
   const [sort, setSort] = useStoredSort(listedOrder ? "smm:sort:listed" : "smm:sort", listedOrder ? "listed" : "name-asc");
   const [filter, setFilter] = useState<FileKind | "all">("all");
   const allFiles = useMemo(() => items.filter((i) => i.kind === "file"), [items]);
@@ -255,6 +258,7 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
                     folderName={folder && onThisPage ? folderName : undefined}
                   />
                 )}
+                {requestTo && folder && <RequestItemsButton event={folder.event} items={selectedItems} folderPath={path} coordinator={requestTo} />}
                 {canCompress && <CompressButton items={selectedItems} onBatch={compressSelected} variant="bar" />}
                 <button
                   className="h-9 px-3 rounded-md bg-pencil text-foreground text-sm font-semibold inline-flex items-center gap-2 hover:brightness-110"

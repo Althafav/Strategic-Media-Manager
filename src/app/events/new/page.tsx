@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
+import { isPending, listUsers } from "@/lib/users";
 import { AddEventForm } from "./add-event-form";
 
 export const metadata = { title: "Add event · Strategic Media Manager" };
@@ -10,6 +11,9 @@ export const maxDuration = 300; // the new event's first index sync runs after t
 
 export default async function NewEventPage() {
   if (!(await isAdmin())) notFound();
+  const users = (await listUsers().catch(() => []))
+    .filter((u) => !isPending(u))
+    .map((u) => ({ email: u.email, label: u.name || u.email }));
   return (
     <div className="max-w-xl pt-6">
       <Link href="/" className="text-sm text-subtle hover:text-foreground inline-flex items-center gap-1">
@@ -20,7 +24,7 @@ export default async function NewEventPage() {
         Point to the OneDrive folder that holds the event&apos;s media. Files stay in OneDrive; the app reads them through
         the share link.
       </p>
-      <AddEventForm />
+      <AddEventForm users={users} />
     </div>
   );
 }

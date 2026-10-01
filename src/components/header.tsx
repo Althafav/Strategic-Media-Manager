@@ -1,18 +1,33 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, ImagePlus, Link2, LogOut, Search, Users } from "lucide-react";
-import { logout } from "@/app/login/actions";
+import { Search } from "lucide-react";
 import { getSession } from "@/lib/auth";
-import { pendingCountFor } from "@/lib/requests";
-import { isPending, listUsers } from "@/lib/users";
+import { pendingCountFor, unseenAnswersFor } from "@/lib/requests";
+import { isPending, listUsers, normalizeEmail } from "@/lib/users";
+import { UserMenu } from "./user-menu";
 
 export async function Header() {
   const session = await getSession();
   const loggedIn = !!session;
   const pendingCount =
     session?.role === "admin" ? (await listUsers().catch(() => [])).filter(isPending).length : 0;
-  // New photo requests waiting for this coordinator (or the admin). 0 before migration 0011.
-  const requestCount = session ? await pendingCountFor(session).catch(() => 0) : 0;
+  // New photo requests waiting for this coordinator (or the admin), plus answers to their own requests they haven't
+  // seen yet. Each part is 0 until its migration (0011 / 0013) runs.
+  const requestCount = session
+    ? (await Promise.all([pendingCountFor(session).catch(() => 0), unseenAnswersFor(session).catch(() => 0)])).reduce((a, b) => a + b)
+    : 0;
+  // The user's name from app_users, else "john.doe@x.com" -> "John Doe". The password login is "Admin".
+  const displayName = !session
+    ? ""
+    : !session.email
+      ? "Admin"
+      : (await listUsers().catch(() => [])).find((u) => u.email === normalizeEmail(session.email!))?.name?.trim() ||
+        session.email
+          .split("@")[0]
+          .split(/[._-]+/)
+          .filter(Boolean)
+          .map((w) => w[0].toUpperCase() + w.slice(1))
+          .join(" ");
   const logo = (
     <>
       <Image src="/mark.png" alt="" width={28} height={28} className="rounded-[5px]" priority />
@@ -42,61 +57,13 @@ export async function Header() {
                 className="w-full h-9 rounded-md bg-background border border-transparent focus:border-foreground focus:bg-surface pl-9 pr-3 text-sm outline-none placeholder:text-subtle"
               />
             </form>
-            <nav className="flex items-center">
-              <Link
-                href="/top"
-                title="Most liked"
-                className="h-9 px-2.5 rounded-md text-sm text-subtle hover:text-foreground hover:bg-background inline-flex items-center gap-2"
-              >
-                <Heart className="size-4" />
-                <span className="hidden md:inline">Most liked</span>
-              </Link>
-              <Link
-                href="/requests"
-                title="Photo requests"
-                className="h-9 px-2.5 rounded-md text-sm text-subtle hover:text-foreground hover:bg-background inline-flex items-center gap-2"
-              >
-                <ImagePlus className="size-4" />
-                <span className="hidden md:inline">Requests</span>
-                {requestCount > 0 && (
-                  <span className="min-w-5 h-5 px-1.5 rounded-full bg-amber-500/20 text-xs text-foreground grid place-items-center">
-                    {requestCount}
-                  </span>
-                )}
-              </Link>
-              <Link
-                href="/shares"
-                title="Shared links"
-                className="h-9 px-2.5 rounded-md text-sm text-subtle hover:text-foreground hover:bg-background inline-flex items-center gap-2"
-              >
-                <Link2 className="size-4" />
-                <span className="hidden md:inline">Shared links</span>
-              </Link>
-              {session.role === "admin" && (
-                <Link
-                  href="/users"
-                  title="Users"
-                  className="h-9 px-2.5 rounded-md text-sm text-subtle hover:text-foreground hover:bg-background inline-flex items-center gap-2"
-                >
-                  <Users className="size-4" />
-                  <span className="hidden md:inline">Users</span>
-                  {pendingCount > 0 && (
-                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-amber-500/20 text-xs text-foreground grid place-items-center">
-                      {pendingCount}
-                    </span>
-                  )}
-                </Link>
-              )}
-              <form action={logout}>
-                <button
-                  title={`Log out ${session.email ?? "admin"}`}
-                  className="h-9 px-2.5 rounded-md text-sm text-subtle hover:text-foreground hover:bg-background inline-flex items-center gap-2"
-                >
-                  <LogOut className="size-4" />
-                  <span className="hidden md:inline">Log out</span>
-                </button>
-              </form>
-            </nav>
+            <UserMenu
+              name={displayName}
+              email={session.email}
+              isAdmin={session.role === "admin"}
+              requestCount={requestCount}
+              pendingCount={pendingCount}
+            />
           </>
         )}
       </div>

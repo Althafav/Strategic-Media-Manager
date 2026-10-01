@@ -4,27 +4,31 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, requireSession } from "@/lib/auth";
-import { createEvent, deleteEvent, getEvent, setCoordinator } from "@/lib/events";
+import { createEvent, deleteEvent, getEvent, renameEvent, setCoordinator } from "@/lib/events";
 import { isAllowedUser, normalizeEmail } from "@/lib/users";
 import { runDeltaSync, SyncBusyError } from "@/lib/sync/delta-sync";
 import { describeSyncError } from "@/lib/sync/status";
 
-export type AddEventState = { error?: string; values?: { title: string; shareUrl: string } };
+export type AddEventState = { error?: string; values?: { title: string; shareUrl: string; coordinator: string } };
 
 export async function addEvent(_prev: AddEventState, form: FormData): Promise<AddEventState> {
   const title = String(form.get("title") ?? "");
   const shareUrl = String(form.get("shareUrl") ?? "");
-  const values = { title, shareUrl };
+  const coordinator = normalizeEmail(String(form.get("coordinator") ?? ""));
+  const values = { title, shareUrl, coordinator };
 
   const denied = await requireAdmin();
   if (denied) return { error: denied, values };
   if (!title.trim()) return { error: "Give the event a name.", values };
+  if (coordinator && !(await isAllowedUser(coordinator))) return { error: "Pick an active user from the Users list.", values };
 
   const result = await createEvent({ title, shareUrl });
   if (!result.ok) return { error: result.error, values };
 
   // Index the new event for search in the background; the cron resumes it if this is cut short.
   const event = result.event;
+  // Optional. The event is already saved, so a failure here (e.g. migration 0011 not run) only skips the coordinator.
+  if (coordinator) await setCoordinator(event.id, coordinator).catch((e) => console.error(`Coordinator not set for ${event.slug}`, e));
   after(() => runDeltaSync(event).catch((e) => console.error(`Initial sync failed for ${event.slug}`, e)));
 
   redirect(`/e/${encodeURIComponent(event.slug)}`);
@@ -82,6 +86,24 @@ export async function setEventCoordinator(slug: string, email: string): Promise<
   } catch (e) {
     return { error: (e as Error).message || "Could not change the coordinator." };
   }
+  revalidatePath("/");
+  revalidatePath("/settings");
   revalidatePath(`/e/${encodeURIComponent(slug)}`, "layout");
+  return {};
+}
+
+/** Renames the event (display name only; its URL doesn't change). Admin only. */
+export async function renameEventAction(slug: string, title: string): Promise<{ error?: string }> {
+  const denied = await requireAdmin();
+  if (denied) return { error: denied };
+  if (!title.trim()) return { error: "Give the event a name." };
+  const event = await getEvent(slug);
+  if (!event) return { error: "Event not found. It may have been removed." };
+  try {
+    await renameEvent(event.id, title);
+  } catch (e) {
+    return { error: (e as Error).message || "Could not rename the event." };
+  }
+  revalidatePath("/", "layout");
   return {};
 }

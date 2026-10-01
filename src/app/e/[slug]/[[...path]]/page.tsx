@@ -2,8 +2,6 @@ import { notFound, redirect } from "next/navigation";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Gallery } from "@/components/gallery";
 import { getSession } from "@/lib/auth";
-import { CoordinatorSelect } from "@/components/coordinator-select";
-import { RequestPhotosButton } from "@/components/request-photos-button";
 import { ShareFolderButton } from "@/components/share-folder-button";
 import { getEvent } from "@/lib/events";
 import { browseHref, cleanName } from "@/lib/format";
@@ -61,15 +59,9 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
       <Breadcrumbs base={browseHref(event.slug)} rootLabel={event.title} path={path} />
       <div className="flex flex-wrap items-end gap-3 mt-3">
         <h1 className="display text-4xl md:text-5xl flex-1 min-w-0 text-balance">{title}</h1>
-        {admin && event.coordinator_email !== undefined && (
-          <CoordinatorSelect slug={event.slug} current={coordinator ?? null} users={activeUsers} />
-        )}
-        {canRequest && (
-          <RequestPhotosButton event={event.slug} folderPath={path} folderName={title} coordinator={coordinatorName!} />
-        )}
         <ShareFolderButton event={event.slug} folderId={result.folder.id} folderPath={path} folderName={title} shares={shares} />
       </div>
-      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={admin} likes={likes} />
+      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={admin} likes={likes} requestTo={canRequest ? coordinatorName! : undefined} />
     </>
   );
 }
