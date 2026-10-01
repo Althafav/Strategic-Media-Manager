@@ -26,6 +26,8 @@ export async function createShareLink(_prev: CreateShareState, form: FormData): 
     if (folderId && !isValidId(folderId)) return { error: "Invalid folder." };
   } else if (!isValidId(folderId)) return { error: "Invalid folder." };
   if (!EXPIRY_OPTIONS.some((o) => o.value === expiry)) return { error: "Pick when the link expires." };
+  const label = String(form.get("label") ?? "").trim();
+  if (!label) return { error: "Say who this link is for." };
 
   try {
     const created = await createShare({
@@ -34,7 +36,7 @@ export async function createShareLink(_prev: CreateShareState, form: FormData): 
       itemIds: itemIds ?? undefined,
       folderPath,
       folderName: String(form.get("folderName") ?? "").slice(0, 200) || "Shared folder",
-      label: String(form.get("label") ?? ""),
+      label,
       expiry,
       createdBy: shareOwner(session),
     });

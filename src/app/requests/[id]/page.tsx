@@ -4,9 +4,12 @@ import { ArrowLeft } from "lucide-react";
 import { Gallery } from "@/components/gallery";
 import { getSession } from "@/lib/auth";
 import { canHandle, getRequest, requestMedia } from "@/lib/requests";
+import { isOpen, isUnseenAnswer } from "@/lib/request-types";
 import { formatDate } from "@/lib/share-types";
+import { shareOwner } from "@/lib/shares";
 import { listUsers } from "@/lib/users";
-import { RequestControls } from "../request-controls";
+import { MarkSeen } from "../mark-seen";
+import { DeleteRequestButton, RequestControls } from "../request-controls";
 import { handledBy, RequestWhere, StatusChip } from "../request-parts";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +37,8 @@ export default async function RequestPage({ params }: PageProps<"/requests/[id]"
 
   return (
     <>
+      {/* The requester opening an answer they hadn't seen clears it from the header badge. */}
+      {r.requested_by === shareOwner(session) && isUnseenAnswer(r) && <MarkSeen id={r.id} />}
       <div className="pt-6">
         <Link href={coordinator ? "/requests" : "/requests?tab=sent"} className="text-sm text-subtle hover:text-foreground inline-flex items-center gap-1.5">
           <ArrowLeft className="size-4" /> Requests
@@ -53,13 +58,22 @@ export default async function RequestPage({ params }: PageProps<"/requests/[id]"
         </p>
         <p className="rounded-lg border border-border bg-surface px-4 py-3 whitespace-pre-wrap break-words">{r.message}</p>
         {coordinator ? (
-          <RequestControls key={`${r.status}:${r.coordinator_note ?? ""}`} id={r.id} status={r.status} note={r.coordinator_note} />
+          <RequestControls
+            key={`${r.status}:${r.coordinator_note ?? ""}`}
+            id={r.id}
+            status={r.status}
+            note={r.coordinator_note}
+            leaveTo="/requests"
+          />
         ) : (
-          r.coordinator_note && (
-            <p className="text-sm rounded-md bg-background border border-border px-3 py-2 whitespace-pre-wrap break-words">
-              <span className="font-medium">{person(by)}:</span> {r.coordinator_note}
-            </p>
-          )
+          <div className="flex items-start gap-2">
+            {r.coordinator_note && (
+              <p className="flex-1 text-sm rounded-md bg-background border border-border px-3 py-2 whitespace-pre-wrap break-words">
+                <span className="font-medium">{person(by)}:</span> {r.coordinator_note}
+              </p>
+            )}
+            {!isOpen(r.status) && <DeleteRequestButton id={r.id} leaveTo="/requests?tab=sent" />}
+          </div>
         )}
       </div>
 

@@ -1,15 +1,14 @@
 import Link from "next/link";
-import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { listEvents } from "@/lib/events";
 import type { MediaItem } from "@/lib/onedrive/types";
-import { isUnseenAnswer } from "@/lib/request-types";
+import { isOpen, isUnseenAnswer } from "@/lib/request-types";
 import {
+  inboxSeenAt,
   isCoordinator,
   listAssigned,
   listMine,
-  markSentSeen,
   pendingCountFor,
   requestMedia,
   unseenAnswersFor,
@@ -17,7 +16,8 @@ import {
 } from "@/lib/requests";
 import { formatDate } from "@/lib/share-types";
 import { listUsers } from "@/lib/users";
-import { RequestControls } from "./request-controls";
+import { MarkSeen } from "./mark-seen";
+import { DeleteRequestButton, RequestControls } from "./request-controls";
 import { handledBy, RequestWhere, StatusChip } from "./request-parts";
 import { RequestedItems } from "./requested-items";
 
@@ -53,8 +53,16 @@ export default async function RequestsPage({ searchParams }: PageProps<"/request
   const person = (owner: string | null | undefined) =>
     owner === "admin" ? "Admin" : owner ? (nameByEmail.get(owner) ?? owner) : "Unknown";
 
-  // Viewing Sent shows the new replies once (highlighted below), then clears them from the badge.
-  if (tab === "sent" && sent?.some(isUnseenAnswer)) after(() => markSentSeen(session).catch(() => {}));
+  // Viewing a tab clears its new items from the header badge. Sent highlights its new replies this once (below).
+  const seenAt = tab === "inbox" ? await inboxSeenAt() : undefined;
+  const newestShown = inbox?.open
+    .filter((r) => r.status === "pending" && (!seenAt || Date.parse(r.created_at) > Date.parse(seenAt)))
+    .reduce<string | undefined>((max, r) => (!max || Date.parse(r.created_at) > Date.parse(max) ? r.created_at : max), undefined);
+  const markSeen = newestShown ? (
+    <MarkSeen inboxUpTo={newestShown} />
+  ) : tab === "sent" && sent?.some(isUnseenAnswer) ? (
+    <MarkSeen sent />
+  ) : null;
 
   const body = (r: PhotoRequestRow) => {
     const event = eventById.get(r.event_id);
@@ -113,6 +121,7 @@ export default async function RequestsPage({ searchParams }: PageProps<"/request
             {unseen && <span className="font-medium text-foreground">New reply</span>}
           </p>
         </div>
+        {!isOpen(r.status) && <DeleteRequestButton id={r.id} compact />}
       </li>
     );
   };
@@ -136,6 +145,7 @@ export default async function RequestsPage({ searchParams }: PageProps<"/request
 
   return (
     <div className="max-w-4xl">
+      {markSeen}
       <div className="pt-10 mb-6">
         <h1 className="display text-5xl">Photo requests</h1>
         <p className="text-subtle mt-1">

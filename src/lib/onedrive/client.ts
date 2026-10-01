@@ -238,8 +238,9 @@ function toMediaItem(i: DriveItem): Omit<MediaItem, "event"> {
     takenAt: i.photo?.takenDateTime,
     camera: cameraName(i) ?? undefined,
     modifiedAt: i.lastModifiedDateTime,
-    thumb: thumb ? sizedThumb(thumb, 400) : undefined,
-    preview: thumb ? sizedThumb(thumb, 1920) : undefined,
+    // The raw drive thumbnail URL is never emitted to the browser: callers build /api/thumb URLs
+    // with withPreviews() so every image load re-checks the share token. See SECURITY.md.
+    hasThumb: !!thumb,
   };
 }
 

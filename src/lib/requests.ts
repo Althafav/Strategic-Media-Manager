@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import type { Session } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listEvents, type EventRow } from "@/lib/events";
@@ -143,12 +144,24 @@ export async function getRequest(session: Session, id: string): Promise<{ reques
   return request.requested_by === shareOwner(session) || canHandle(session, event) ? { request, event } : null;
 }
 
-/** New (unanswered) requests waiting for this session. Part of the header badge. */
-export async function pendingCountFor(session: Session): Promise<number> {
+/**
+ * When this browser last opened the Inbox. Kept in a cookie rather than the database because the admin and the
+ * coordinator see the same requests, and one of them opening the Inbox mustn't clear the other's badge.
+ */
+export const INBOX_SEEN_COOKIE = "smm_inbox_seen";
+
+export async function inboxSeenAt(): Promise<string | undefined> {
+  const value = (await cookies()).get(INBOX_SEEN_COOKIE)?.value;
+  return value && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString() : undefined;
+}
+
+/** New (unanswered) requests waiting for this session, only those sent after `since` when given (the header badge). */
+export async function pendingCountFor(session: Session, since?: string): Promise<number> {
   const ids = await handledEventIds(session);
   if (ids?.length === 0) return 0;
   let query = db().from("photo_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
   if (ids) query = query.in("event_id", ids);
+  if (since) query = query.gt("created_at", since);
   const { count, error } = await query;
   if (error) throw error;
   return count ?? 0;
@@ -166,6 +179,18 @@ export async function markSentSeen(session: Session): Promise<void> {
   const { error } = await db()
     .from("photo_requests")
     .update({ requester_seen_at: new Date().toISOString() })
+    .eq("requested_by", shareOwner(session))
+    .in("status", ANSWERED);
+  if (error) throw error;
+}
+
+/** The requester has seen the answer to this one request (opened its page). */
+export async function markRequestSeen(session: Session, id: string): Promise<void> {
+  if (!UUID.test(id)) return;
+  const { error } = await db()
+    .from("photo_requests")
+    .update({ requester_seen_at: new Date().toISOString() })
+    .eq("id", id)
     .eq("requested_by", shareOwner(session))
     .in("status", ANSWERED);
   if (error) throw error;
@@ -201,7 +226,30 @@ export async function updateRequest(
   return error ? error.message : null;
 }
 
-const VIDEO_EXT = /\.(mp4|mov|m4v|avi|mkv|webm|wmv|mts|3gp)$/i;
+/**
+ * Removes an answered request for everyone: the requester, the event's coordinator or the admin may do it. Open
+ * requests can't be deleted (decline them first). Returns an error message, or null on success.
+ */
+export async function deleteRequest(session: Session, id: string): Promise<string | null> {
+  if (!UUID.test(id)) return "Request not found. It may have been removed.";
+  const { data: row, error: readErr } = await db()
+    .from("photo_requests")
+    .select("event_id, status, requested_by")
+    .eq("id", id)
+    .maybeSingle();
+  if (readErr) return readErr.message;
+  if (!row) return "Request not found. It may have been removed.";
+  const event = (await listEvents({ includeHidden: true })).find((e) => e.id === row.event_id);
+  const allowed = row.requested_by === shareOwner(session) || (!!event && canHandle(session, event));
+  if (!allowed) return "Only the requester or this event's coordinator can delete this request.";
+  if (!ANSWERED.includes(row.status as RequestStatus)) return "Only answered requests can be deleted.";
+
+  // Status filter again: if someone reopened it meanwhile, nothing is deleted.
+  const { error } = await db().from("photo_requests").delete().eq("id", id).in("status", ANSWERED);
+  return error ? error.message : null;
+}
+
+const VIDEO_EXT =/\.(mp4|mov|m4v|avi|mkv|webm|wmv|mts|3gp)$/i;
 
 /**
  * The picked items of each request as gallery items, so the gallery and lightbox can show them. Details come from

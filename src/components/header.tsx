@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { getSession } from "@/lib/auth";
-import { pendingCountFor, unseenAnswersFor } from "@/lib/requests";
+import { inboxSeenAt, pendingCountFor, unseenAnswersFor } from "@/lib/requests";
 import { isPending, listUsers, normalizeEmail } from "@/lib/users";
 import { UserMenu } from "./user-menu";
 
@@ -11,11 +11,14 @@ export async function Header() {
   const loggedIn = !!session;
   const pendingCount =
     session?.role === "admin" ? (await listUsers().catch(() => [])).filter(isPending).length : 0;
-  // New photo requests waiting for this coordinator (or the admin), plus answers to their own requests they haven't
-  // seen yet. Each part is 0 until its migration (0011 / 0013) runs.
-  const requestCount = session
-    ? (await Promise.all([pendingCountFor(session).catch(() => 0), unseenAnswersFor(session).catch(() => 0)])).reduce((a, b) => a + b)
-    : 0;
+  // Photo requests sent to this coordinator (or the admin) since they last opened the Inbox, plus answers to their
+  // own requests they haven't seen yet. Each part is 0 until its migration (0011 / 0013) runs.
+  const [newRequests, newReplies] = session
+    ? await Promise.all([
+        pendingCountFor(session, await inboxSeenAt()).catch(() => 0),
+        unseenAnswersFor(session).catch(() => 0),
+      ])
+    : [0, 0];
   // The user's name from app_users, else "john.doe@x.com" -> "John Doe". The password login is "Admin".
   const displayName = !session
     ? ""
@@ -61,7 +64,8 @@ export async function Header() {
               name={displayName}
               email={session.email}
               isAdmin={session.role === "admin"}
-              requestCount={requestCount}
+              newRequests={newRequests}
+              newReplies={newReplies}
               pendingCount={pendingCount}
             />
           </>

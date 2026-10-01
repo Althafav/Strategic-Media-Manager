@@ -130,109 +130,158 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3 py-4">
-        <p className="text-sm text-subtle tabular-nums">{summary}</p>
-        {kinds.length > 1 && (
-          <div role="group" aria-label="Show" className="flex rounded-md border border-border bg-surface p-0.5">
-            {([["all", allFiles.length], ...kinds] as const).map(([kind, count]) => (
-              <button
-                key={kind}
-                aria-pressed={filter === kind}
-                onClick={() => changeFilter(kind)}
-                className={`h-7 px-2.5 rounded-[5px] text-sm inline-flex items-center gap-1.5 ${
-                  filter === kind ? "bg-accent text-accent-foreground" : "text-subtle hover:text-foreground"
-                }`}
+      {/* Leave room for the selection sidebar so it never covers tiles. */}
+      <div className={selecting || zip.progress ? "lg:mr-[19rem]" : undefined}>
+        <div className="flex flex-wrap items-center gap-3 py-4">
+          <p className="text-sm text-subtle tabular-nums">{summary}</p>
+          {kinds.length > 1 && (
+            <div role="group" aria-label="Show" className="flex rounded-md border border-border bg-surface p-0.5">
+              {([["all", allFiles.length], ...kinds] as const).map(([kind, count]) => (
+                <button
+                  key={kind}
+                  aria-pressed={filter === kind}
+                  onClick={() => changeFilter(kind)}
+                  className={`h-7 px-2.5 rounded-[5px] text-sm inline-flex items-center gap-1.5 ${
+                    filter === kind ? "bg-accent text-accent-foreground" : "text-subtle hover:text-foreground"
+                  }`}
+                >
+                  {KIND_LABELS[kind]}
+                  <span className={`text-xs tabular-nums ${filter === kind ? "text-accent-foreground/70" : ""}`}>{count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {items.length > 1 && (
+            <label className="relative inline-flex items-center">
+              <span className="sr-only">Sort by</span>
+              <ArrowDownUp className="size-4 absolute left-2.5 text-subtle pointer-events-none" aria-hidden />
+              <select
+                value={sort}
+                onChange={(e) => changeSort(e.target.value as SortKey)}
+                className="h-9 pl-8 pr-3 rounded-md border border-border bg-surface text-sm hover:border-foreground cursor-pointer"
               >
-                {KIND_LABELS[kind]}
-                <span className={`text-xs tabular-nums ${filter === kind ? "text-accent-foreground/70" : ""}`}>{count}</span>
+                {listedOrder && <option value="listed">{listedOrder}</option>}
+                {SORTS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="ml-auto flex gap-2">
+            {files.length > 0 && (
+              <button
+                className="h-9 px-3 rounded-md border border-border bg-surface text-sm hover:border-foreground"
+                onClick={() =>
+                  setSelected((prev) => (allFilesHere ? new Set() : new Set([...prev, ...files.map(itemKey)])))
+                }
+              >
+                {allFilesHere ? "Clear selection" : `Select all ${filter === "all" ? "files" : KIND_LABELS[filter].toLowerCase()}`}
               </button>
+            )}
+            {everything && items.length > 0 && (
+              <button
+                className="h-9 px-3 rounded-md bg-accent text-accent-foreground text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50"
+                onClick={() => zip.start(everything, `${cleanName(folderName)}.zip`)}
+                disabled={zip.busy}
+              >
+                <Download className="size-4" /> {folder ? "Download folder" : "Download all"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {folders.length > 0 && (
+          <section className="grid gap-x-4 gap-y-6 grid-cols-[repeat(auto-fill,minmax(210px,1fr))] mb-10">
+            {folders.map((f, i) => (
+              <FolderCard
+                key={itemKey(f)}
+                item={f}
+                href={
+                  base ? folderHref(base, [f.name]) : browseHref(f.event, f.location ? [...f.location, f.name] : [...path, f.name])
+                }
+                selected={selected.has(itemKey(f))}
+                onToggle={(range) => toggle(i, folders, range)}
+              />
             ))}
+          </section>
+        )}
+
+        {files.length > 0 && (
+          // Contact sheet: frames butt up against each other with hairline gutters.
+          <section className="grid gap-[2px] grid-cols-[repeat(auto-fill,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]">
+            {files.map((f, i) => (
+              <FileTile
+                key={itemKey(f)}
+                item={f}
+                selected={selected.has(itemKey(f))}
+                onOpen={(e) => (selecting ? toggle(i, files, e.shiftKey) : setOpen(i))}
+                onToggle={(range) => toggle(i, files, range)}
+                like={like.enabled ? like.get(f) : undefined}
+                onLike={() => like.toggle(f)}
+              />
+            ))}
+          </section>
+        )}
+
+        {items.length === 0 && (
+          <div className="py-24 text-center">
+            <p className="display text-3xl">This folder is empty</p>
+            <p className="text-subtle mt-2">Photos added to it in OneDrive will show up here.</p>
           </div>
         )}
-        {items.length > 1 && (
-          <label className="relative inline-flex items-center">
-            <span className="sr-only">Sort by</span>
-            <ArrowDownUp className="size-4 absolute left-2.5 text-subtle pointer-events-none" aria-hidden />
-            <select
-              value={sort}
-              onChange={(e) => changeSort(e.target.value as SortKey)}
-              className="h-9 pl-8 pr-3 rounded-md border border-border bg-surface text-sm hover:border-foreground cursor-pointer"
-            >
-              {listedOrder && <option value="listed">{listedOrder}</option>}
-              {SORTS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <div className="ml-auto flex gap-2">
-          {files.length > 0 && (
-            <button
-              className="h-9 px-3 rounded-md border border-border bg-surface text-sm hover:border-foreground"
-              onClick={() =>
-                setSelected((prev) => (allFilesHere ? new Set() : new Set([...prev, ...files.map(itemKey)])))
-              }
-            >
-              {allFilesHere ? "Clear selection" : `Select all ${filter === "all" ? "files" : KIND_LABELS[filter].toLowerCase()}`}
-            </button>
-          )}
-          {everything && items.length > 0 && (
-            <button
-              className="h-9 px-3 rounded-md bg-accent text-accent-foreground text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50"
-              onClick={() => zip.start(everything, `${cleanName(folderName)}.zip`)}
-              disabled={zip.busy}
-            >
-              <Download className="size-4" /> {folder ? "Download folder" : "Download all"}
-            </button>
-          )}
-        </div>
       </div>
 
-      {folders.length > 0 && (
-        <section className="grid gap-x-4 gap-y-6 grid-cols-[repeat(auto-fill,minmax(210px,1fr))] mb-10">
-          {folders.map((f, i) => (
-            <FolderCard
-              key={itemKey(f)}
-              item={f}
-              href={
-                base ? folderHref(base, [f.name]) : browseHref(f.event, f.location ? [...f.location, f.name] : [...path, f.name])
-              }
-              selected={selected.has(itemKey(f))}
-              onToggle={(range) => toggle(i, folders, range)}
-            />
-          ))}
-        </section>
-      )}
-
-      {files.length > 0 && (
-        // Contact sheet: frames butt up against each other with hairline gutters.
-        <section className="grid gap-[2px] grid-cols-[repeat(auto-fill,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]">
-          {files.map((f, i) => (
-            <FileTile
-              key={itemKey(f)}
-              item={f}
-              selected={selected.has(itemKey(f))}
-              onOpen={(e) => (selecting ? toggle(i, files, e.shiftKey) : setOpen(i))}
-              onToggle={(range) => toggle(i, files, range)}
-              like={like.enabled ? like.get(f) : undefined}
-              onLike={() => like.toggle(f)}
-            />
-          ))}
-        </section>
-      )}
-
-      {items.length === 0 && (
-        <div className="py-24 text-center">
-          <p className="display text-3xl">This folder is empty</p>
-          <p className="text-subtle mt-2">Photos added to it in OneDrive will show up here.</p>
-        </div>
-      )}
-
       {(selecting || zip.progress) && (
-        <div className="fixed bottom-4 inset-x-4 z-40 flex justify-center">
-          <div className="w-full max-w-2xl rounded-lg bg-foreground text-white shadow-[0_12px_40px_rgba(0,0,0,0.35)] px-4 py-3 flex items-center gap-3">
+        // Desktop: a sidebar on the right listing every pick. Phones: a bottom sheet with a short scrolling list.
+        <aside
+          aria-label="Selection"
+          className="fixed z-40 inset-x-4 bottom-4 max-h-[70vh] lg:inset-x-auto lg:right-4 lg:top-[4.5rem] lg:w-72 lg:max-h-none flex flex-col rounded-lg bg-foreground text-white shadow-[0_12px_40px_rgba(0,0,0,0.35)]"
+        >
+          <div className="flex items-center gap-2 pl-4 pr-2 py-2.5 border-b border-white/10">
+            {selecting ? (
+              <p className="flex-1 min-w-0 flex flex-wrap items-baseline gap-x-2">
+                <span className="display text-2xl text-pencil tabular-nums">{selected.size}</span>
+                <span className="text-sm">selected</span>
+                {selectedBytes > 0 && <span className="text-xs text-white/60">{formatBytes(selectedBytes)}+</span>}
+                {folderCount > 1 && <span className="text-xs text-white/60">from {folderCount} folders</span>}
+              </p>
+            ) : (
+              <p className="flex-1 text-sm">Download</p>
+            )}
+            <button
+              aria-label="Clear selection"
+              title="Clear selection"
+              className="size-8 grid place-items-center rounded-md hover:bg-white/10"
+              onClick={() => {
+                zip.reset();
+                setSelected(new Set());
+              }}
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          {selecting && (
+            <ul className="flex-1 min-h-0 max-h-[30vh] lg:max-h-none overflow-y-auto py-1">
+              {selectedItems.map((item) => (
+                <SelectedRow
+                  key={itemKey(item)}
+                  item={item}
+                  onRemove={() =>
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      next.delete(itemKey(item));
+                      return next;
+                    })
+                  }
+                />
+              ))}
+            </ul>
+          )}
+
+          <div className={`p-3 flex flex-wrap gap-2 ${selecting ? "border-t border-white/10" : ""}`}>
             {zip.progress && zip.progress.phase !== "done" ? (
               <ZipStatus progress={zip.progress} onCancel={zip.cancel} />
             ) : zip.error ? (
@@ -244,12 +293,6 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
               </p>
             ) : (
               <>
-                <p className="flex-1 flex items-baseline gap-2">
-                  <span className="display text-2xl text-pencil tabular-nums">{selected.size}</span>
-                  <span className="text-sm">selected</span>
-                  {selectedBytes > 0 && <span className="text-sm text-white/60">{formatBytes(selectedBytes)}+</span>}
-                  {folderCount > 1 && <span className="text-sm text-white/60">from {folderCount} folders</span>}
-                </p>
                 {canShare && (
                   <ShareItemsButton
                     items={selectedItems}
@@ -261,25 +304,15 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
                 {requestTo && folder && <RequestItemsButton event={folder.event} items={selectedItems} folderPath={path} coordinator={requestTo} />}
                 {canCompress && <CompressButton items={selectedItems} onBatch={compressSelected} variant="bar" />}
                 <button
-                  className="h-9 px-3 rounded-md bg-pencil text-foreground text-sm font-semibold inline-flex items-center gap-2 hover:brightness-110"
+                  className="h-9 px-3 w-full rounded-md bg-pencil text-foreground text-sm font-semibold inline-flex items-center justify-center gap-2 hover:brightness-110"
                   onClick={downloadSelected}
                 >
                   <Download className="size-4" /> Download
                 </button>
               </>
             )}
-            <button
-              aria-label="Close"
-              className="size-9 grid place-items-center rounded-md hover:bg-white/10"
-              onClick={() => {
-                zip.reset();
-                setSelected(new Set());
-              }}
-            >
-              <X className="size-4" />
-            </button>
           </div>
-        </div>
+        </aside>
       )}
 
       {open !== null && (
@@ -525,6 +558,38 @@ function SelectBox({ selected, onToggle }: { selected: boolean; onToggle: (range
     >
       <Check className="size-3.5" strokeWidth={3} />
     </button>
+  );
+}
+
+/** One compact line in the selection sidebar: tiny preview, name, and a remove button. */
+function SelectedRow({ item, onRemove }: { item: MediaItem; onRemove: () => void }) {
+  const name = item.kind === "folder" ? cleanName(item.name) : item.name;
+  return (
+    <li className="group/row flex items-center gap-2 h-8 pl-3 pr-1.5 hover:bg-white/5">
+      <span className="size-6 shrink-0 grid place-items-center overflow-hidden rounded-sm bg-white/10 text-white/70">
+        {item.kind === "folder" ? (
+          <Folder className="size-3.5" />
+        ) : item.thumb ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.thumb} alt="" loading="lazy" className="size-full object-cover" />
+        ) : item.isVideo ? (
+          <Play className="size-3 fill-current" />
+        ) : (
+          <FileText className="size-3.5" />
+        )}
+      </span>
+      <span className="flex-1 min-w-0 truncate text-xs" title={item.name}>
+        {name}
+      </span>
+      <button
+        aria-label={`Remove ${name}`}
+        title="Remove"
+        onClick={onRemove}
+        className="size-6 shrink-0 grid place-items-center rounded text-white/50 hover:text-white hover:bg-white/10"
+      >
+        <X className="size-3" />
+      </button>
+    </li>
   );
 }
 

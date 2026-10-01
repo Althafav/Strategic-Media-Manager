@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
 import { getEvent } from "@/lib/events";
 import { isRequestStatus, type RequestItem } from "@/lib/request-types";
-import { createRequest, updateRequest } from "@/lib/requests";
+import { createRequest, deleteRequest, INBOX_SEEN_COOKIE, markRequestSeen, markSentSeen, updateRequest } from "@/lib/requests";
 
 const EXPIRED = "Your session has expired. Log in again.";
 
@@ -27,6 +28,39 @@ export async function createRequestAction(_prev: CreateRequestState, form: FormD
   if (!result.ok) return { error: result.error, values };
   revalidatePath("/requests");
   return { sent: Date.now() };
+}
+
+/**
+ * Clears what the viewer has just seen from the header badge: the Inbox up to the newest request it showed
+ * (`inboxUpTo`), every answer on the Sent tab (`sent`), or the answer to one request (`id`).
+ */
+export async function markRequestsSeenAction(seen: { inboxUpTo?: string; sent?: boolean; id?: string }): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+  const upTo = Date.parse(String(seen.inboxUpTo ?? ""));
+  // +1ms: Postgres keeps microseconds, so the newest request must not count as newer than itself. Never ahead of
+  // now, so a forged value can't hide requests that arrive later.
+  if (!Number.isNaN(upTo)) {
+    (await cookies()).set(INBOX_SEEN_COOKIE, new Date(Math.min(upTo + 1, Date.now())).toISOString(), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+    });
+  }
+  if (seen.sent) await markSentSeen(session).catch(() => {});
+  if (seen.id) await markRequestSeen(session, String(seen.id)).catch(() => {});
+  // No revalidate: refreshing would drop the page's "New reply" highlights. The badge clears client-side (MarkSeen).
+}
+
+export async function deleteRequestAction(id: string): Promise<{ error?: string }> {
+  const session = await getSession();
+  if (!session) return { error: EXPIRED };
+  const error = await deleteRequest(session, String(id));
+  if (error) return { error };
+  revalidatePath("/requests");
+  return {};
 }
 
 export async function updateRequestAction(id: string, status: string, note: string): Promise<{ error?: string }> {

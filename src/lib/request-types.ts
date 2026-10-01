@@ -48,6 +48,13 @@ export const isUnseenAnswer = (r: PhotoRequestRow) =>
   !!r.resolved_at &&
   (!r.requester_seen_at || Date.parse(r.resolved_at) > Date.parse(r.requester_seen_at));
 
+/**
+ * Window event fired when a page has shown the viewer their new requests or replies, so the header badge (in the
+ * root layout, which client navigation doesn't re-render) can drop them straight away.
+ */
+export const REQUESTS_SEEN_EVENT = "smm:requests-seen";
+export type RequestsSeen = { inbox?: boolean; sent?: boolean; reply?: boolean };
+
 /** Longest shared leading part of several folder paths (the folder that contains them all). */
 export function commonPath(paths: string[][]): string[] {
   if (!paths.length) return [];

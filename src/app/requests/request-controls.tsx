@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, CircleSlash, Loader2, Play, RotateCcw, Save } from "lucide-react";
+import { Check, CircleSlash, Loader2, Play, RotateCcw, Save, Trash2 } from "lucide-react";
 import { isOpen, MAX_REQUEST_LENGTH, type RequestStatus } from "@/lib/request-types";
-import { updateRequestAction } from "./actions";
+import { deleteRequestAction, updateRequestAction } from "./actions";
 
 type Action = { status: RequestStatus; label: string; icon: typeof Check; primary?: boolean; confirm?: string };
 
@@ -19,8 +19,45 @@ function actionsFor(status: RequestStatus): Action[] {
 
 const button = "h-9 px-3 rounded-md text-sm font-medium inline-flex items-center justify-center gap-1.5 disabled:opacity-50";
 
+/** Deletes an answered request for everyone. `leaveTo`: where to go afterwards (its own page no longer exists). */
+export function DeleteRequestButton({ id, leaveTo, compact }: { id: string; leaveTo?: string; compact?: boolean }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      title="Delete request"
+      aria-label="Delete request"
+      onClick={() => {
+        if (!window.confirm("Delete this request? It will be removed for the requester and the coordinator.")) return;
+        start(async () => {
+          const res = await deleteRequestAction(id);
+          if (res.error) window.alert(res.error);
+          else if (leaveTo) router.push(leaveTo);
+          router.refresh();
+        });
+      }}
+      className={`${compact ? "size-8" : "size-9"} shrink-0 rounded-md border border-border bg-surface grid place-items-center text-subtle hover:text-red-600 hover:border-red-500/40 disabled:opacity-60`}
+    >
+      {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+    </button>
+  );
+}
+
 /** The coordinator's answer to one request: a note the requester sees, and the next status. */
-export function RequestControls({ id, status, note }: { id: string; status: RequestStatus; note: string | null }) {
+export function RequestControls({
+  id,
+  status,
+  note,
+  leaveTo,
+}: {
+  id: string;
+  status: RequestStatus;
+  note: string | null;
+  /** Where to go after deleting (set on the request's own page). */
+  leaveTo?: string;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<RequestStatus | null>(null);
@@ -72,6 +109,7 @@ export function RequestControls({ id, status, note }: { id: string; status: Requ
             {busy === status ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />} Update note
           </button>
         )}
+        {!isOpen(status) && <DeleteRequestButton id={id} leaveTo={leaveTo} />}
       </div>
     </div>
   );

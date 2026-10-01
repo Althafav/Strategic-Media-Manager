@@ -4,14 +4,46 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Heart, ImagePlus, Link2, LogOut, Settings, Users, type LucideIcon } from "lucide-react";
 import { logout } from "@/app/login/actions";
+import { REQUESTS_SEEN_EVENT, type RequestsSeen } from "@/lib/request-types";
 
 type Props = {
   name: string;
   email?: string;
   isAdmin: boolean;
-  requestCount: number;
+  /** Requests sent to this coordinator since they last opened the Inbox. */
+  newRequests: number;
+  /** Answers to this user's own requests they haven't seen yet. */
+  newReplies: number;
   pendingCount: number;
 };
+
+/**
+ * The request counts, minus what pages have reported as seen since the header last rendered. Fresh counts from the
+ * server (a reload or a refresh) replace the local adjustments.
+ */
+function useRequestCount(newRequests: number, newReplies: number) {
+  const [cleared, setCleared] = useState({ inbox: false, sent: false, replies: 0 });
+  const [counts, setCounts] = useState({ newRequests, newReplies });
+  if (counts.newRequests !== newRequests || counts.newReplies !== newReplies) {
+    setCounts({ newRequests, newReplies });
+    setCleared({ inbox: false, sent: false, replies: 0 });
+  }
+
+  useEffect(() => {
+    const onSeen = (e: Event) => {
+      const seen = (e as CustomEvent<RequestsSeen>).detail ?? {};
+      setCleared((c) => ({
+        inbox: c.inbox || !!seen.inbox,
+        sent: c.sent || !!seen.sent,
+        replies: c.replies + (seen.reply ? 1 : 0),
+      }));
+    };
+    window.addEventListener(REQUESTS_SEEN_EVENT, onSeen);
+    return () => window.removeEventListener(REQUESTS_SEEN_EVENT, onSeen);
+  }, []);
+
+  return (cleared.inbox ? 0 : newRequests) + (cleared.sent ? 0 : Math.max(0, newReplies - cleared.replies));
+}
 
 /** First two letters of the display name, e.g. "Althaf" -> "AL". */
 function initials(name: string) {
@@ -19,7 +51,8 @@ function initials(name: string) {
 }
 
 /** Profile circle in the header; opens the app's secondary pages and Log out. */
-export function UserMenu({ name, email, isAdmin, requestCount, pendingCount }: Props) {
+export function UserMenu({ name, email, isAdmin, newRequests, newReplies, pendingCount }: Props) {
+  const requestCount = useRequestCount(newRequests, newReplies);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const badge = requestCount + pendingCount;

@@ -172,8 +172,17 @@ export function CreateShareForm({ fields }: { fields: Record<string, string> }) 
           </label>
         </div>
         <label className="block">
-          <span className="text-xs font-medium text-subtle">For (optional)</span>
-          <input name="label" maxLength={120} placeholder="e.g. Reuters photo desk" className={`${field} mt-1`} />
+          <span className="text-xs font-medium text-subtle">For</span>
+          <input
+            name="label"
+            required
+            maxLength={120}
+            placeholder="e.g. Reuters photo desk"
+            // Spaces alone don't name anyone.
+            pattern=".*\S.*"
+            title="Say who this link is for."
+            className={`${field} mt-1`}
+          />
         </label>
         <label className="block">
           <span className="text-xs font-medium text-subtle">Expires after</span>

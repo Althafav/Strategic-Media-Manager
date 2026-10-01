@@ -45,6 +45,19 @@ export const streamHref = (r: Ref) => `${downloadHref(r)}&stream=1`;
 export const coverSrc = (r: Ref) => `/api/cover/${r.id}?${refQuery(r)}`;
 export const thumbSrc = (r: Ref, size: number) => `/api/thumb/${r.id}?${refQuery(r)}&s=${size}`;
 
+/**
+ * Fills in `thumb`/`preview` as /api/thumb URLs (carrying the ref's t/sig) when the item has a
+ * thumbnail. Keeps raw OneDrive URLs out of the page HTML, so every image load re-checks the
+ * share token and revocation takes effect at once. See SECURITY.md.
+ */
+export function withPreviews<T extends Ref & { hasThumb?: boolean }>(item: T): T & { thumb?: string; preview?: string } {
+  if (!item.hasThumb) return item;
+  return { ...item, thumb: thumbSrc(item, 400), preview: thumbSrc(item, ZOOM_PX_PREVIEW) };
+}
+
+/** The preview size we request up front; the lightbox swaps to ZOOM_PX only when zoomed in. */
+const ZOOM_PX_PREVIEW = 1920;
+
 /** Largest preview we ask OneDrive for (sharp when zoomed in, ~0.5 MB, far below an original). */
 export const ZOOM_PX = 3840;
 

@@ -4,7 +4,9 @@
 
 Internal web app for browsing, searching, previewing and downloading event media (photos/videos) that lives in
 OneDrive for Business folders shared as **"Anyone with the link"**. OneDrive is the only file storage: the app
-reads metadata and hands the browser pre-authenticated OneDrive URLs. It never stores or proxies file bytes.
+reads metadata and hands the browser pre-authenticated OneDrive URLs for **originals** (download/zip). It never
+stores or proxies file bytes. **Thumbnails/previews go through `/api/thumb`** (not embedded raw), so raw OneDrive
+URLs stay out of page HTML and every image load re-checks the share token — see `SECURITY.md`.
 
 Stack: Next.js 16 (App Router, Turbopack, `src/proxy.ts`), React 19, Tailwind v4, Supabase (Postgres via the
 service-role key only), `client-zip`, lucide icons. No test suite yet.
@@ -96,6 +98,8 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
    - Media APIs accept `?t=&sig=` without login, and `resolveItemAccess` verifies both.
    - The manifest expands only signed items and signs its output entries.
    - Any new UI that passes item refs around must keep `t`/`sig` (use the `Ref` type from `format.ts`).
+   - Thumbnails/previews are built by `withPreviews` (`format.ts`) as `/api/thumb` URLs carrying
+     `t`/`sig`; `toMediaItem` emits only `hasThumb`. Never embed a raw OneDrive thumbnail URL in a page.
    - `proxy.ts` lets `/s/*` through, and lets media APIs through only when `t` is present.
    - Views are counted once per browser session via a session cookie scoped to `/s/<token>`.
    - Downloads are counted per click (`recordDownload`, migration 0006): `/api/download` redirects with `t`, and

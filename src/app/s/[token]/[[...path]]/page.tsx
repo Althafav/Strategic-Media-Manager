@@ -4,7 +4,7 @@ import { Download, Link2Off } from "lucide-react";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Gallery } from "@/components/gallery";
 import { ShareStatus } from "@/components/share-link-actions";
-import { cleanName, downloadHref, formatBytes, shareHref } from "@/lib/format";
+import { cleanName, downloadHref, formatBytes, shareHref, withPreviews } from "@/lib/format";
 import { getFolder, getItems, NotFoundError } from "@/lib/onedrive/client";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { getActiveShare, signItem } from "@/lib/shares";
@@ -58,8 +58,10 @@ export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...
   const path = rawPath.map(decode);
   const picked = share.item_ids?.length ? share.item_ids : null;
 
-  // Sign every item so the media APIs can check it belongs to this share.
-  const signed = <T extends { id: string }>(i: T) => ({ ...i, event: event.slug, t: token, sig: signItem(token, i.id) });
+  // Sign every item so the media APIs can check it belongs to this share, and build its /api/thumb
+  // URLs (carrying t/sig) so no raw OneDrive URL reaches the page. See SECURITY.md.
+  const signed = <T extends { id: string; hasThumb?: boolean }>(i: T) =>
+    withPreviews({ ...i, event: event.slug, t: token, sig: signItem(token, i.id) });
 
   let folder: { id: string } | undefined;
   let items: MediaItem[];

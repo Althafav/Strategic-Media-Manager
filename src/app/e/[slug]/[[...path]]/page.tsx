@@ -4,7 +4,7 @@ import { Gallery } from "@/components/gallery";
 import { getSession } from "@/lib/auth";
 import { ShareFolderButton } from "@/components/share-folder-button";
 import { getEvent } from "@/lib/events";
-import { browseHref, cleanName } from "@/lib/format";
+import { browseHref, cleanName, withPreviews } from "@/lib/format";
 import { getFolder, NotFoundError } from "@/lib/onedrive/client";
 import { getEventLikes } from "@/lib/likes";
 import { listShares, ownerFilter, shareOwner } from "@/lib/shares";
@@ -37,7 +37,7 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
     if (e instanceof NotFoundError) notFound();
     throw e;
   });
-  const items = result.items.map((i) => ({ ...i, event: event.slug }));
+  const items = result.items.map((i) => withPreviews({ ...i, event: event.slug }));
   const title = path.length ? cleanName(result.folder.name) : event.title;
   // null when the shares table doesn't exist yet (migration 0003 not run).
   const session = await getSession();
