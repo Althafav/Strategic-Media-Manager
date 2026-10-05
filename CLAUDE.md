@@ -46,6 +46,7 @@ src/lib/access.ts               decides which event a media API request may read
 src/lib/format.ts               URL builders: browseHref, shareHref, downloadHref, coverSrc, thumbSrc (carry t/sig)
 src/lib/zip-download.ts         browser-side zip: /api/manifest -> fetch OneDrive URLs -> (optional compress) -> client-zip -> disk
 src/lib/image-compress.ts       browser-side resize/re-encode (createImageBitmap + canvas; JPG/WebP/PNG); UI in components/compress-dialog.tsx
+src/lib/covers.ts               admin-picked folder covers (folder_covers, migration 0016): getEventCovers, setFolderCover; action in app/covers/actions.ts
 src/lib/downloads.ts            per-file download counts (item_downloads, migration 0015): recordItemDownloads, getEventDownloads
 src/lib/selection-store.ts      cross-folder selection kept in sessionStorage (`smm:selection`), subscribe/getSelection store
 src/lib/nodes.ts                `nodes` index row type + NodeRow -> MediaItem for the search/top pages
@@ -62,7 +63,7 @@ src/app/api/auth/sso, sso-login Microsoft SSO start (sets state cookie) and brok
 src/app/users                   admin-only: add/remove SSO users, approve/reject pending access requests
 src/app/requests                photo requests: Inbox tab (event's coordinator; admin sees all) / Sent tab (own requests), /requests/[id] shows the picked photos in the Gallery
 src/lib/requests.ts             photo_requests queries + canHandle (server-only); client-safe types/labels in request-types.ts
-src/app/settings                admin-only: rename events, set each event's marketing coordinator
+src/app/settings                admin-only: rename events, pick each event's cover (event-cover-picker.tsx: browse any folder, stored as the root folder's folder_covers row), set each event's marketing coordinator
 src/app/search                  index search (Supabase `search_nodes` RPC)
 src/app/top                     most liked photos (`top_liked` RPC, event filter `?e=`); likes live in `photo_likes` via `lib/likes.ts` + `app/likes/actions.ts`
 src/app/api/{download,thumb,cover}/[id], api/manifest   media APIs (302s to OneDrive / JSON)
@@ -173,7 +174,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
@@ -182,6 +183,7 @@ here; DDL can't be run from the app. Tables:
 - `app_users` (SSO allowlist; `status` active/pending: unknown Microsoft sign-ins are stored as pending until an admin approves)
 - `photo_likes` (one row per team member per liked item; owner = `shareOwner`; team only, never on share pages)
 - `item_downloads` (per-file download count, PK `(event_id, item_id)`; `record_item_downloads(ev, ids)` RPC adds 1 per id)
+- `folder_covers` (admin's cover pick per folder, PK `(event_id, folder_id)`; set from the lightbox "Set as cover" on event pages, must be an image directly in that folder. `/api/cover` uses picks first, also for parent folders that fall back to a subfolder; otherwise the first image in name order. Folder tiles add `&v=` from the picks so a change skips the 15-min cached redirect)
 - `share_emails` (one row per link + email entered at the gate; `record_share_email` RPC upserts and enforces the cap; `share_id` set null when the link is deleted)
 - `photo_requests` (a team member asks the event's coordinator for photos; `requested_by`/`resolved_by` = `shareOwner`).
   `events.coordinator_email` is the marketing coordinator: at most one per event, set only by the admin

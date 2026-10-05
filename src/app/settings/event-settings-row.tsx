@@ -4,19 +4,24 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 import { renameEventAction, setEventCoordinator } from "@/app/events/actions";
+import { EventCoverPicker } from "./event-cover-picker";
 
 type Props = {
   slug: string;
   title: string;
   /** Missing until migration 0011 runs. */
   coordinator?: { current: string | null; users: { email: string; label: string }[] };
+  /** The event's root folder; null until the event's link has been opened once. */
+  rootId: string | null;
+  /** Item id of the cover picked here, if any. */
+  coverId?: string;
 };
 
 const field =
   "w-full h-10 rounded-md bg-background border border-border px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 disabled:opacity-60";
 
-/** One event's admin settings: its name (saved on demand) and its coordinator (saved on change). */
-export function EventSettingsRow({ slug, title, coordinator }: Props) {
+/** One event's admin settings: its name (saved on demand), its coordinator (saved on change) and its cover. */
+export function EventSettingsRow({ slug, title, coordinator, rootId, coverId }: Props) {
   const router = useRouter();
   const [name, setName] = useState(title);
   const [renaming, startRename] = useTransition();
@@ -92,6 +97,11 @@ export function EventSettingsRow({ slug, title, coordinator }: Props) {
           </label>
         )}
       </div>
+      {rootId && (
+        <div className="mt-4">
+          <EventCoverPicker slug={slug} title={title} rootId={rootId} current={coverId} />
+        </div>
+      )}
       {error && (
         <p role="alert" className="mt-3 text-sm rounded-md border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 px-3 py-2">
           {error}

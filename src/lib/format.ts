@@ -42,7 +42,8 @@ export const itemKey = (r: Ref) => `${r.event}/${r.id}`;
 export const downloadHref = (r: Ref) => `/api/download/${r.id}?${refQuery(r)}`;
 /** Same file for in-page playback (video src): not counted as a share-link download. */
 export const streamHref = (r: Ref) => `${downloadHref(r)}&stream=1`;
-export const coverSrc = (r: Ref) => `/api/cover/${r.id}?${refQuery(r)}`;
+/** `v` changes when picked covers change, so the browser doesn't reuse its cached redirect to the old one. */
+export const coverSrc = (r: Ref, v?: string) => `/api/cover/${r.id}?${refQuery(r)}${v ? `&v=${v}` : ""}`;
 export const thumbSrc = (r: Ref, size: number) => `/api/thumb/${r.id}?${refQuery(r)}&s=${size}`;
 
 /**

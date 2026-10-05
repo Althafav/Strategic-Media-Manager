@@ -10,6 +10,7 @@ import {
   FolderOpen,
   Heart,
   ImageOff,
+  ImageUp,
   Info,
   Loader2,
   Maximize,
@@ -38,6 +39,8 @@ type Props = {
   /** The current item's likes (team pages only; omitted hides the heart). */
   like?: LikeState;
   onLike?: (item: MediaItem) => void;
+  /** Admin on event pages: make the open photo this folder's cover (pressed when it already is). */
+  cover?: { isCover: boolean; onToggle: (item: MediaItem) => void };
 };
 
 type ZoomCommand = "toggle" | "in" | "out" | "reset";
@@ -47,7 +50,7 @@ const INFO_KEY = "smm:lightbox-info";
 
 const dateTimeFmt = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" });
 
-export function Lightbox({ items, index, onIndex, onClose, share, showDetails = false, like, onLike }: Props) {
+export function Lightbox({ items, index, onIndex, onClose, share, showDetails = false, like, onLike, cover }: Props) {
   const item = items[index];
   const root = useRef<HTMLDivElement>(null);
   const zoom = useRef<((cmd: ZoomCommand) => void) | null>(null);
@@ -203,6 +206,16 @@ export function Lightbox({ items, index, onIndex, onClose, share, showDetails = 
           >
             <Heart className={`size-4 ${like.mine ? "fill-current" : ""}`} />
             {like.count > 0 && like.count}
+          </button>
+        )}
+        {cover && (
+          <button
+            aria-pressed={cover.isCover}
+            title={cover.isCover ? "This is the folder cover. Click to go back to the automatic cover." : "Use this photo as the folder cover"}
+            onClick={() => cover.onToggle(item)}
+            className="h-9 px-2.5 sm:px-3 rounded-md bg-white/10 hover:bg-white/20 aria-pressed:bg-white aria-pressed:text-black text-sm inline-flex items-center gap-2"
+          >
+            <ImageUp className="size-4" /> <span className="hidden sm:inline">{cover.isCover ? "Folder cover" : "Set as cover"}</span>
           </button>
         )}
         {share && <ShareItemsButton items={[item]} folderId={share.folderId} folderPath={share.folderPath} />}

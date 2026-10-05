@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowDownUp, Check, Download, FileText, Folder, Heart, Play, X } from "lucide-react";
+import { setFolderCoverAction } from "@/app/covers/actions";
 import { setLikeAction } from "@/app/likes/actions";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { browseHref, cleanName, coverSrc, downloadHref, folderHref, formatBytes, itemKey, type Ref } from "@/lib/format";
@@ -37,11 +38,15 @@ type Props = {
   downloads?: Record<string, number>;
   /** Event pages with a coordinator: their name, which shows "Request" for the selection. */
   requestTo?: string;
+  /** Team event pages: picked folder covers (folder id -> item id). */
+  covers?: Record<string, string>;
+  /** Admin: "Set as cover" in the lightbox picks the open photo as this folder's cover. */
+  canSetCover?: boolean;
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder, likes, downloads, requestTo }: Props) {
+export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder, likes, downloads, requestTo, covers: initialCovers, canSetCover }: Props) {
   const [sort, setSort] = useStoredSort(listedOrder ? "smm:sort:listed" : "smm:sort", listedOrder ? "listed" : "name-asc");
   const [filter, setFilter] = useState<FileKind | "all">("all");
   const allFiles = useMemo(() => items.filter((i) => i.kind === "file"), [items]);
@@ -56,6 +61,7 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
   const lastClicked = useRef<number | null>(null);
   const zip = useZip();
   const like = useLikes(likes);
+  const cover = useCovers(initialCovers, folder);
 
   const selecting = selected.size > 0;
   const selectedBytes = selectedItems.reduce((n, i) => n + i.size, 0);
@@ -205,6 +211,7 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
                 }
                 selected={selected.has(itemKey(f))}
                 onToggle={(range) => toggle(i, folders, range)}
+                coverVersion={cover.version}
               />
             ))}
           </section>
@@ -328,6 +335,7 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
           showDetails={showDetails}
           like={like.enabled ? like.get(files[open]) : undefined}
           onLike={like.toggle}
+          cover={canSetCover && folder && files[open].isImage ? { isCover: cover.isCover(files[open]), onToggle: cover.toggle } : undefined}
         />
       )}
     </>
@@ -448,8 +456,8 @@ function PencilMark() {
   );
 }
 
-function FolderCard(props: { item: MediaItem; href: string; selected: boolean; onToggle: (range: boolean) => void }) {
-  const { item, href, selected, onToggle } = props;
+function FolderCard(props: { item: MediaItem; href: string; selected: boolean; onToggle: (range: boolean) => void; coverVersion?: string }) {
+  const { item, href, selected, onToggle, coverVersion } = props;
   const [hasCover, setHasCover] = useState(true);
   return (
     <div className="group relative">
@@ -458,7 +466,7 @@ function FolderCard(props: { item: MediaItem; href: string; selected: boolean; o
           {hasCover && item.childCount ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={coverSrc(item)}
+              src={coverSrc(item, coverVersion)}
               alt=""
               loading="lazy"
               onError={() => setHasCover(false)}
@@ -716,6 +724,31 @@ function useLikes(initial: LikeMap | undefined) {
     }
   };
   return { enabled: !!initial, get, toggle };
+}
+
+/** Picked folder covers; `version` changes with them so folder tiles refetch instead of reusing a cached cover. */
+function useCovers(initial: Record<string, string> | undefined, folder: Ref | undefined) {
+  const [covers, setCovers] = useState(initial ?? {});
+  const version = useMemo(() => {
+    const s = Object.entries(covers).sort().join(",");
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
+    return s ? (h >>> 0).toString(36) : undefined;
+  }, [covers]);
+  const isCover = (item: MediaItem) => !!folder && covers[folder.id] === item.id;
+  const toggle = async (item: MediaItem) => {
+    if (!folder) return;
+    const before = covers;
+    const next = isCover(item) ? null : item.id;
+    const rest = Object.fromEntries(Object.entries(covers).filter(([k]) => k !== folder.id));
+    setCovers(next ? { ...rest, [folder.id]: next } : rest);
+    const result = await setFolderCoverAction(folder.event, folder.id, next).catch(() => ({ error: "Could not save the cover." }));
+    if (result.error) {
+      setCovers(before);
+      alert(result.error);
+    }
+  };
+  return { version, isCover, toggle };
 }
 
 function useZip() {

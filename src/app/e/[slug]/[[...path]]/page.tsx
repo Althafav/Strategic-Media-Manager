@@ -6,6 +6,7 @@ import { ShareFolderButton } from "@/components/share-folder-button";
 import { getEvent } from "@/lib/events";
 import { browseHref, cleanName, withPreviews } from "@/lib/format";
 import { getFolder, NotFoundError } from "@/lib/onedrive/client";
+import { getEventCovers } from "@/lib/covers";
 import { getEventDownloads } from "@/lib/downloads";
 import { getEventLikes } from "@/lib/likes";
 import { listShares, ownerFilter, shareOwner } from "@/lib/shares";
@@ -41,6 +42,7 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
     getEventLikes(event.id, event.slug, shareOwner(session), session.role === "admin").catch(() => ({})),
     listUsers().catch(() => []),
     getEventDownloads(event.id, event.slug).catch(() => ({})),
+    getEventCovers(event.id).catch(() => ({})),
   ]);
   const result = await getFolder(event.share_url, path).catch((e) => {
     if (e instanceof NotFoundError) notFound();
@@ -48,7 +50,7 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
   });
   const items = result.items.map((i) => withPreviews({ ...i, event: event.slug }));
   const title = path.length ? cleanName(result.folder.name) : event.title;
-  const [shares, [likes, users, downloads]] = await Promise.all([
+  const [shares, [likes, users, downloads, covers]] = await Promise.all([
     // null when the shares table doesn't exist yet (migration 0003 not run).
     listShares({ eventId: event.id, folderId: result.folder.id, createdBy: ownerFilter(session) }).catch(() => null),
     extras,
@@ -67,7 +69,7 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
         <h1 className="display text-4xl md:text-5xl flex-1 min-w-0 text-balance">{title}</h1>
         <ShareFolderButton event={event.slug} folderId={result.folder.id} folderPath={path} folderName={title} shares={shares} />
       </div>
-      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={admin} likes={likes} downloads={downloads} requestTo={canRequest ? coordinatorName! : undefined} />
+      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={admin} likes={likes} downloads={downloads} requestTo={canRequest ? coordinatorName! : undefined} covers={covers} canSetCover={admin} />
     </>
   );
 }

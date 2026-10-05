@@ -149,16 +149,21 @@ export async function getItems(share: string, ids: string[], folderId?: string |
 }
 
 /**
- * Finds a representative image inside a folder (breadth-first, shallow): the first image in the
- * gallery's sort order. Uses the memoised full listing (shared with the folder page), so the cover
- * matches the first photo the user sees when opening the folder.
+ * Finds a representative image inside a folder (breadth-first, shallow). A folder's picked cover
+ * (`pinned`: folder id -> item id, see lib/covers.ts) wins, including for folders reached on the way
+ * down; otherwise the first image in the gallery's sort order. Uses the memoised full listing
+ * (shared with the folder page), so the cover matches the first photo the user sees there.
  */
-export async function getCoverUrl(share: string, id: string): Promise<string | null> {
-  return memo(share, `cover:${id}`, async () => {
+export async function getCoverUrl(share: string, id: string, pinned: Record<string, string> = {}): Promise<string | null> {
+  const pins = Object.entries(pinned).sort().join(",");
+  return memo(share, `cover:${id}:${pins}`, async () => {
     let queue = [id];
     for (let depth = 0; depth < 3 && queue.length; depth++) {
       const next: string[] = [];
       for (const folderId of queue.slice(0, 4)) {
+        // A picked cover that was deleted (no thumbnail) falls through to the automatic pick.
+        const pick = pinned[folderId] && (await getThumbUrl(share, pinned[folderId], 640).catch(() => null));
+        if (pick) return pick;
         const { items } = await getFolder(share, [], folderId);
         // A few tries only: an image without a drive thumbnail (still processing) shouldn't cost a call per file.
         for (const img of items.filter((i) => i.kind === "file" && i.isImage).slice(0, 3)) {

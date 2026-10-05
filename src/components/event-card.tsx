@@ -12,6 +12,8 @@ type Props = {
   slug: string;
   title: string;
   rootId: string | null;
+  /** The cover picked in Settings, if any: changes the cover URL so a new pick isn't hidden by the cached one. */
+  coverId?: string;
   itemCount: number | null;
   size: number | null;
   /** Search index status; missing when it couldn't be read. */
@@ -23,7 +25,7 @@ type Props = {
 const REVEAL = "[@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-within:opacity-100";
 
 /** One event as a wide sheet: the cover photo leads, the title sits beside it in condensed type. */
-export function EventCard({ slug, title, rootId, itemCount, size, sync, canRemove = false }: Props) {
+export function EventCard({ slug, title, rootId, coverId, itemCount, size, sync, canRemove = false }: Props) {
   const [hasCover, setHasCover] = useState(!!rootId);
   const count = itemCount ?? 0;
   const needsAttention = sync?.state === "error" || sync?.state === "stale";
@@ -37,7 +39,7 @@ export function EventCard({ slug, title, rootId, itemCount, size, sync, canRemov
           {hasCover ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={coverSrc({ event: slug, id: rootId! })}
+              src={coverSrc({ event: slug, id: rootId! }, coverId)}
               alt=""
               loading="lazy"
               onError={() => setHasCover(false)}
