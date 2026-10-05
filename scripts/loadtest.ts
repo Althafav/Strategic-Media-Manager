@@ -55,9 +55,13 @@ async function main() {
   const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 
   // Admin session cookie, same format as lib/auth.ts createSessionToken.
+  // Against production, pass the value of a real logged-in `smm_session` cookie via LOADTEST_SESSION (the script
+  // never sees a password); share-link traffic is skipped then because share/gate signing needs the prod secret.
+  const external = process.env.LOADTEST_SESSION?.replace(/^smm_session=/, "");
   const payload = Buffer.from(JSON.stringify({ exp: Date.now() + 3600_000, role: "admin" })).toString("base64url");
-  const key = `${env("AUTH_SECRET")}:${env("AUTH_PASSWORD")}`;
-  const sessionCookie = `smm_session=${payload}.${createHmac("sha256", key).update(payload).digest("base64url")}`;
+  const sessionCookie = external
+    ? `smm_session=${external}`
+    : `smm_session=${payload}.${createHmac("sha256", `${env("AUTH_SECRET")}:${env("AUTH_PASSWORD")}`).update(payload).digest("base64url")}`;
 
   // Pick a real event with indexed images, and a live folder share if one exists.
   const { data: events } = await db.from("events").select("id, slug, title").eq("hidden", false).limit(20);
@@ -74,7 +78,7 @@ async function main() {
   if (!ev) throw new Error("No event with indexed images; run `npm run sync` first");
   const folders = (await db.from("nodes").select("id, name, path, child_count").eq("event_id", ev.id).eq("kind", "folder").gt("child_count", 0).order("child_count", { ascending: false }).limit(15)).data ?? [];
 
-  const { data: shares } = await db
+  const { data: shares } = external ? { data: null } : await db
     .from("shares")
     .select("token, folder_id, expires_at")
     .eq("event_id", ev.id)

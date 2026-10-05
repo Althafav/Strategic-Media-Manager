@@ -6,6 +6,7 @@ import { ShareFolderButton } from "@/components/share-folder-button";
 import { getEvent } from "@/lib/events";
 import { browseHref, cleanName, withPreviews } from "@/lib/format";
 import { getFolder, NotFoundError } from "@/lib/onedrive/client";
+import { getEventDownloads } from "@/lib/downloads";
 import { getEventLikes } from "@/lib/likes";
 import { listShares, ownerFilter, shareOwner } from "@/lib/shares";
 import { isPending, listUsers } from "@/lib/users";
@@ -42,10 +43,11 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
   // null when the shares table doesn't exist yet (migration 0003 not run).
   const session = await getSession();
   if (!session) redirect("/login");
-  const [shares, likes, users] = await Promise.all([
+  const [shares, likes, users, downloads] = await Promise.all([
     listShares({ eventId: event.id, folderId: result.folder.id, createdBy: ownerFilter(session) }).catch(() => null),
     getEventLikes(event.id, event.slug, shareOwner(session), session.role === "admin").catch(() => ({})),
     listUsers().catch(() => []),
+    getEventDownloads(event.id, event.slug).catch(() => ({})),
   ]);
   const admin = session.role === "admin";
   const activeUsers = users.filter((u) => !isPending(u)).map((u) => ({ email: u.email, label: u.name || u.email }));
@@ -61,7 +63,7 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
         <h1 className="display text-4xl md:text-5xl flex-1 min-w-0 text-balance">{title}</h1>
         <ShareFolderButton event={event.slug} folderId={result.folder.id} folderPath={path} folderName={title} shares={shares} />
       </div>
-      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={admin} likes={likes} requestTo={canRequest ? coordinatorName! : undefined} />
+      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={admin} likes={likes} downloads={downloads} requestTo={canRequest ? coordinatorName! : undefined} />
     </>
   );
 }

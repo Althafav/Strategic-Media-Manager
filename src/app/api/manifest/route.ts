@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { getSession } from "@/lib/auth";
+import { recordItemDownloads } from "@/lib/downloads";
 import { getEvent } from "@/lib/events";
 import { buildManifest, isValidId, NotFoundError, type ManifestEntry } from "@/lib/onedrive/client";
 import { canViewShare } from "@/lib/share-emails";
@@ -33,16 +34,25 @@ export async function POST(req: Request) {
       // Everything listed is inside the shared folder; sign it so expired download URLs can be refreshed.
       for (const f of files) Object.assign(f, { t: token, sig: signItem(token, f.id) });
       // A zip download starts here. Counted once, even if the visitor cancels it part-way.
-      after(() => recordDownload(token, files.length).catch(() => {}));
+      const ids = files.map((f) => f.id);
+      after(() => recordDownload(token, ids.length).catch(() => {}));
+      after(() => recordItemDownloads(active.event.id, ids).catch(() => {}));
       return Response.json({ files }, { headers: { "cache-control": "no-store" } });
     }
 
     if (!(await getSession())) return Response.json({ error: "Not logged in" }, { status: 401 });
+    const counted: [eventId: string, ids: string[]][] = [];
     for (const [slug, group] of Map.groupBy(refs, (r) => r.event)) {
       const event = await getEvent(slug);
       if (!event) return Response.json({ error: `Unknown event ${slug}` }, { status: 404 });
+      const start = files.length;
       await buildManifest(event.share_url, slug, group.map((r) => r.id), files);
+      counted.push([event.id, files.slice(start).map((f) => f.id)]);
     }
+    // Each file in the zip counts as one download of that file.
+    after(async () => {
+      for (const [eventId, ids] of counted) await recordItemDownloads(eventId, ids).catch(() => {});
+    });
     return Response.json({ files }, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     if (e instanceof NotFoundError) return Response.json({ error: "Not found" }, { status: 404 });

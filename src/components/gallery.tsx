@@ -33,13 +33,15 @@ type Props = {
   listedOrder?: string;
   /** Team pages: like counts keyed by `itemKey`. Omitted on share pages, which hides the like buttons. */
   likes?: LikeMap;
+  /** Team pages: download counts keyed by `itemKey` (team and share-link downloads). Omitted on share pages. */
+  downloads?: Record<string, number>;
   /** Event pages with a coordinator: their name, which shows "Request" for the selection. */
   requestTo?: string;
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder, likes, requestTo }: Props) {
+export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder, likes, downloads, requestTo }: Props) {
   const [sort, setSort] = useStoredSort(listedOrder ? "smm:sort:listed" : "smm:sort", listedOrder ? "listed" : "name-asc");
   const [filter, setFilter] = useState<FileKind | "all">("all");
   const allFiles = useMemo(() => items.filter((i) => i.kind === "file"), [items]);
@@ -220,6 +222,7 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
                 onToggle={(range) => toggle(i, files, range)}
                 like={like.enabled ? like.get(f) : undefined}
                 onLike={() => like.toggle(f)}
+                downloads={downloads?.[itemKey(f)]}
               />
             ))}
           </section>
@@ -486,8 +489,9 @@ function FileTile(props: {
   onToggle: (range: boolean) => void;
   like?: LikeState;
   onLike: () => void;
+  downloads?: number;
 }) {
-  const { item, selected, onOpen, onToggle, like, onLike } = props;
+  const { item, selected, onOpen, onToggle, like, onLike, downloads } = props;
   return (
     <div className={`group relative aspect-square overflow-hidden ${selected ? "bg-surface" : "bg-muted"}`}>
       <button className="size-full block" onClick={onOpen} aria-label={`Open ${item.name}`}>
@@ -518,6 +522,19 @@ function FileTile(props: {
         >
           {item.name}
         </span>
+        {/* Download count; makes way for the file name caption on hover. */}
+        {!!downloads && !selected && (
+          <span
+            title={`Downloaded ${downloads} ${downloads === 1 ? "time" : "times"}`}
+            className={`absolute bottom-2 left-2 h-6 px-1.5 rounded-full bg-foreground/60 text-white text-xs tabular-nums inline-flex items-center gap-1 transition-opacity ${
+              item.thumb ? "group-hover:opacity-0" : "hidden"
+            }`}
+          >
+            <Download className="size-3.5" strokeWidth={2.25} aria-hidden />
+            <span className="sr-only">Downloads: </span>
+            {downloads}
+          </span>
+        )}
       </button>
       {selected && <PencilMark />}
       <SelectBox selected={selected} onToggle={onToggle} />

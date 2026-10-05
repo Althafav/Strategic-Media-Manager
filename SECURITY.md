@@ -43,7 +43,7 @@ the authoritative per-layer rules.
 ## Accepted trade-offs
 
 - **Download and zip URLs are direct OneDrive URLs.** `/api/download` re-checks `t`/`sig` and counts
-  the download on each click before it 302s to `@content.downloadUrl`; `/api/manifest` returns those
+  the download (per link and per file) on each click before it 302s to `@content.downloadUrl`; `/api/manifest` returns those
   URLs for client-side zipping (`client-zip` must fetch bytes straight from OneDrive via CORS).
   Because the bytes come from OneDrive, not the app, **a URL that has already been handed out keeps
   working until OneDrive's own expiry (~hours), even after the share is revoked.** Proxying these

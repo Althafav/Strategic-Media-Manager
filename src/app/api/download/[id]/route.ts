@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { resolveItemAccess } from "@/lib/access";
+import { recordItemDownloads } from "@/lib/downloads";
 import { getDownloadUrl, isValidId, NotFoundError } from "@/lib/onedrive/client";
 import { recordDownload } from "@/lib/shares";
 
@@ -7,7 +8,8 @@ import { recordDownload } from "@/lib/shares";
  * Redirects to a fresh pre-authenticated OneDrive download URL, so file bytes
  * go straight from OneDrive to the browser. `?json=1` returns the URL instead
  * (used by the zip builder to refresh expired links).
- * On share links a redirect counts as a download, except `?stream=1` (the lightbox video player).
+ * Every redirect counts as a download of the file (and, on share links, of the link), except `?stream=1`
+ * (the lightbox video player).
  */
 export async function GET(req: Request, ctx: RouteContext<"/api/download/[id]">) {
   const { id } = await ctx.params;
@@ -21,7 +23,10 @@ export async function GET(req: Request, ctx: RouteContext<"/api/download/[id]">)
       return Response.json({ url }, { headers: { "cache-control": "no-store" } });
     }
     const token = params.get("t");
-    if (token && !params.has("stream")) after(() => recordDownload(token).catch(() => {}));
+    if (!params.has("stream")) {
+      after(() => recordItemDownloads(event.id, [id]).catch(() => {}));
+      if (token) after(() => recordDownload(token).catch(() => {}));
+    }
     return new Response(null, { status: 302, headers: { location: url, "cache-control": "no-store" } });
   } catch (e) {
     if (e instanceof NotFoundError) return new Response("Not found", { status: 404 });

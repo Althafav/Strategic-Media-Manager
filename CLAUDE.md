@@ -46,6 +46,7 @@ src/lib/access.ts               decides which event a media API request may read
 src/lib/format.ts               URL builders: browseHref, shareHref, downloadHref, coverSrc, thumbSrc (carry t/sig)
 src/lib/zip-download.ts         browser-side zip: /api/manifest -> fetch OneDrive URLs -> (optional compress) -> client-zip -> disk
 src/lib/image-compress.ts       browser-side resize/re-encode (createImageBitmap + canvas; JPG/WebP/PNG); UI in components/compress-dialog.tsx
+src/lib/downloads.ts            per-file download counts (item_downloads, migration 0015): recordItemDownloads, getEventDownloads
 src/lib/selection-store.ts      cross-folder selection kept in sessionStorage (`smm:selection`), subscribe/getSelection store
 src/lib/nodes.ts                `nodes` index row type + NodeRow -> MediaItem for the search/top pages
 src/lib/email.ts                best-effort sendEmail via the AIM Congress generic email API (never throws; server-only)
@@ -122,6 +123,9 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
    - Downloads are counted per click (`recordDownload`, migration 0006): `/api/download` redirects with `t`, and
      `/api/manifest` with `t` (one zip, plus its file count). Not counted: `?json=1` URL refreshes, and `?stream=1`
      (`streamHref`, the lightbox video player). Keep new playback uses on `streamHref`.
+   - Per-file counts (migration 0015, `lib/downloads.ts`): the same two routes also add 1 per file to
+     `item_downloads` for team **and** share requests (a zip adds 1 to every file in it; same exclusions).
+     Shown as a badge on team event pages only (`downloads` prop on `Gallery`), never on share pages.
    - `getActiveShare` caches for 15s per instance, so revocation may lag up to 15s across servers.
    - Share lookups must fail closed (`.catch(() => null)`).
    - Ownership (migration 0008): `created_by` is `"admin"` or the SSO user's email (`shareOwner`). Team members
@@ -169,7 +173,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
@@ -177,6 +181,7 @@ here; DDL can't be run from the app. Tables:
 - `shares`
 - `app_users` (SSO allowlist; `status` active/pending: unknown Microsoft sign-ins are stored as pending until an admin approves)
 - `photo_likes` (one row per team member per liked item; owner = `shareOwner`; team only, never on share pages)
+- `item_downloads` (per-file download count, PK `(event_id, item_id)`; `record_item_downloads(ev, ids)` RPC adds 1 per id)
 - `share_emails` (one row per link + email entered at the gate; `record_share_email` RPC upserts and enforces the cap; `share_id` set null when the link is deleted)
 - `photo_requests` (a team member asks the event's coordinator for photos; `requested_by`/`resolved_by` = `shareOwner`).
   `events.coordinator_email` is the marketing coordinator: at most one per event, set only by the admin
