@@ -61,15 +61,22 @@ export async function runDeltaSync(event: EventRow, { budgetMs = 250_000 } = {})
   const lock = await acquireLock(event.id, budgetMs + 60_000);
   if (!lock.ok) throw new SyncBusyError();
 
-  let url: string | undefined =
-    state?.next_link ?? state?.delta_link ?? `${base}?$top=1000&$select=${SELECT},parentReference,deleted`;
+  const fullUrl = `${base}?$top=1000&$select=${SELECT},parentReference,deleted`;
+  let deltaLink = state?.delta_link ?? null;
+  if (deltaLink && !state?.next_link) {
+    // A delta cursor only returns changes, so an index emptied by hand would stay empty. Re-list it in full.
+    const { count, error } = await db().from("nodes").select("id", { count: "exact", head: true }).eq("event_id", event.id);
+    if (error) throw error;
+    if (!count) deltaLink = null;
+  }
+
+  let url: string | undefined = state?.next_link ?? deltaLink ?? fullUrl;
   const result: SyncResult = { upserted: 0, deleted: 0, pages: 0, complete: false };
   const saveState = async (patch: Record<string, unknown>) => {
     const { error } = await db().from("event_sync").update(patch).eq("event_id", event.id);
     if (error) throw error;
   };
 
-  const fullUrl = `${base}?$top=1000&$select=${SELECT},parentReference,deleted`;
   let resyncedAt: string | null = null;
 
   try {
