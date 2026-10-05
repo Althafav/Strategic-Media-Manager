@@ -44,7 +44,7 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
   if (!session) redirect("/login");
   const [shares, likes, users] = await Promise.all([
     listShares({ eventId: event.id, folderId: result.folder.id, createdBy: ownerFilter(session) }).catch(() => null),
-    getEventLikes(event.id, event.slug, shareOwner(session)).catch(() => ({})),
+    getEventLikes(event.id, event.slug, shareOwner(session), session.role === "admin").catch(() => ({})),
     listUsers().catch(() => []),
   ]);
   const admin = session.role === "admin";

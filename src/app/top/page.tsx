@@ -6,7 +6,7 @@ import { db, isIndexConfigured } from "@/lib/db";
 import { listEvents } from "@/lib/events";
 import { thumbSrc } from "@/lib/format";
 import type { LikeMap } from "@/lib/like-types";
-import { likedByOwner, topLiked } from "@/lib/likes";
+import { likedByOwner, likersOf, topLiked } from "@/lib/likes";
 import { nodeToItem, type NodeRow } from "@/lib/nodes";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { shareOwner } from "@/lib/shares";
@@ -32,9 +32,10 @@ export default async function TopLikedPage({ searchParams }: PageProps<"/top">) 
 
   const slugs = new Map(events.map((e) => [e.id, e.slug]));
   const ids = [...new Set(rows.map((r) => r.item_id))];
-  const [nodes, mine] = await Promise.all([
+  const [nodes, mine, likers] = await Promise.all([
     ids.length ? db().from("nodes").select("*").in("id", ids).then(({ data }) => (data ?? []) as NodeRow[]) : [],
     likedByOwner(shareOwner(session), ids).catch(() => new Set<string>()),
+    session.role === "admin" ? likersOf(ids, current?.id).catch(() => new Map<string, string[]>()) : null,
   ]);
   const byKey = new Map(nodes.map((n) => [`${n.event_id}/${n.id}`, n]));
 
@@ -45,7 +46,8 @@ export default async function TopLikedPage({ searchParams }: PageProps<"/top">) 
     if (!slug) continue;
     const node = byKey.get(`${r.event_id}/${r.item_id}`);
     items.push(node ? nodeToItem(node, slug) : notIndexed(r.item_id, slug));
-    likes[`${slug}/${r.item_id}`] = { count: r.likes, mine: mine.has(`${r.event_id}/${r.item_id}`) };
+    const key = `${r.event_id}/${r.item_id}`;
+    likes[`${slug}/${r.item_id}`] = { count: r.likes, mine: mine.has(key), by: likers ? (likers.get(key) ?? []) : undefined };
   }
 
   const chip = (active: boolean) =>

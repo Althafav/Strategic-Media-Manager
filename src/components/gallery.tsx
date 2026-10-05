@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowDownUp, Check, Download, FileText, Folder, Heart, Play, X } from "lucide-react";
 import { setLikeAction } from "@/app/likes/actions";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { browseHref, cleanName, coverSrc, downloadHref, folderHref, formatBytes, itemKey, type Ref } from "@/lib/format";
-import type { LikeMap, LikeState } from "@/lib/like-types";
+import { ADMIN_LIKER, type LikeMap, type LikeState } from "@/lib/like-types";
 import { getSelection, getServerSelection, setSelection, subscribeSelection, type Selection } from "@/lib/selection-store";
 import type { CompressOptions } from "@/lib/image-compress";
 import { downloadAsZip, type ZipProgress } from "@/lib/zip-download";
@@ -526,23 +526,46 @@ function FileTile(props: {
   );
 }
 
-/** Heart + count in the tile corner: always shown once liked, otherwise on hover. */
+/** Heart + count in the tile corner: always shown once liked, otherwise on hover. The admin also gets who liked it on hover. */
 function LikeBadge({ like, onLike }: { like: LikeState; onLike: () => void }) {
+  const tipId = useId();
+  const likers = like.by?.length ? like.by : null;
   return (
-    <button
-      aria-label={like.mine ? "Unlike" : "Like"}
-      aria-pressed={like.mine}
-      title={like.mine ? "Unlike" : "Like"}
-      onClick={onLike}
-      className={`absolute top-2 right-2 z-20 h-6 min-w-6 px-1.5 rounded-full bg-foreground/60 text-white text-xs tabular-nums inline-flex items-center justify-center gap-1 transition hover:bg-foreground/80 ${
-        like.count > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-      }`}
-    >
-      <Heart className={`size-3.5 ${like.mine ? "fill-current" : ""}`} strokeWidth={2.25} />
-      {like.count > 0 && like.count}
-    </button>
+    <div className="group/like absolute top-2 right-2 z-20 flex flex-col items-end max-w-[calc(100%-1rem)]">
+      <button
+        aria-label={like.mine ? "Unlike" : "Like"}
+        aria-pressed={like.mine}
+        aria-describedby={likers ? tipId : undefined}
+        title={likers ? undefined : like.mine ? "Unlike" : "Like"}
+        onClick={onLike}
+        className={`h-6 min-w-6 px-1.5 rounded-full bg-foreground/60 text-white text-xs tabular-nums inline-flex items-center justify-center gap-1 transition hover:bg-foreground/80 ${
+          like.count > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+        }`}
+      >
+        <Heart className={`size-3.5 ${like.mine ? "fill-current" : ""}`} strokeWidth={2.25} />
+        {like.count > 0 && like.count}
+      </button>
+      {likers && (
+        <div
+          id={tipId}
+          role="tooltip"
+          className="mt-1 rounded-md bg-foreground/85 text-white text-[11px] leading-snug px-2 py-1.5 max-w-full opacity-0 pointer-events-none transition-opacity group-hover/like:opacity-100 group-focus-within/like:opacity-100"
+        >
+          <p className="text-white/60">Liked by</p>
+          {likers.slice(0, MAX_LIKERS).map((name, i) => (
+            <p key={i} className="truncate">
+              {name}
+            </p>
+          ))}
+          {likers.length > MAX_LIKERS && <p className="text-white/60">+{likers.length - MAX_LIKERS} more</p>}
+        </div>
+      )}
+    </div>
   );
 }
+
+/** Names that fit in the tile's tooltip; the lightbox lists them all. */
+const MAX_LIKERS = 5;
 
 function SelectBox({ selected, onToggle }: { selected: boolean; onToggle: (range: boolean) => void }) {
   return (
@@ -664,7 +687,9 @@ function useLikes(initial: LikeMap | undefined) {
     const key = itemKey(item);
     const before = get(item);
     const wanted = !before.mine;
-    setChanged((m) => ({ ...m, [key]: { count: Math.max(0, before.count + (wanted ? 1 : -1)), mine: wanted } }));
+    // Only the admin's likes carry `by`, so the optimistic entry is theirs.
+    const by = before.by && (wanted ? [...before.by, ADMIN_LIKER] : before.by.filter((n) => n !== ADMIN_LIKER));
+    setChanged((m) => ({ ...m, [key]: { count: Math.max(0, before.count + (wanted ? 1 : -1)), mine: wanted, by } }));
     const result = await setLikeAction(item.event, item.id, wanted).catch(() => ({ error: "Could not save the like." }));
     if ("error" in result) {
       setChanged((m) => ({ ...m, [key]: before }));

@@ -3,7 +3,7 @@
 import { getSession } from "@/lib/auth";
 import { getEvent } from "@/lib/events";
 import type { LikeState } from "@/lib/like-types";
-import { setLike } from "@/lib/likes";
+import { likersOf, setLike } from "@/lib/likes";
 import { isValidId } from "@/lib/onedrive/client";
 import { shareOwner } from "@/lib/shares";
 
@@ -15,7 +15,10 @@ export async function setLikeAction(eventSlug: string, itemId: string, like: boo
   const event = await getEvent(eventSlug);
   if (!event) return { error: "Event not found." };
   try {
-    return { count: await setLike(event.id, itemId, shareOwner(session), like), mine: like };
+    const count = await setLike(event.id, itemId, shareOwner(session), like);
+    if (session.role !== "admin") return { count, mine: like };
+    const by = await likersOf([itemId], event.id).catch(() => null);
+    return { count, mine: like, by: by?.get(`${event.id}/${itemId}`) ?? [] };
   } catch (e) {
     const message = (e as Error).message ?? "";
     if (/photo_likes/.test(message)) {
