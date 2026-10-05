@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Archivo } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Header } from "@/components/header";
 import "./globals.css";
 
@@ -21,6 +23,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col font-sans">
         <Header />
         <main className="flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-6 pb-28">{children}</main>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
