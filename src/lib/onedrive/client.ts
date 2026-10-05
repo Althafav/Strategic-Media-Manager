@@ -148,20 +148,24 @@ export async function getItems(share: string, ids: string[], folderId?: string |
   return ids.flatMap((id) => found.get(id) ?? []).sort(byKindThenName);
 }
 
-/** Finds a representative image inside a folder (breadth-first, shallow). */
+/**
+ * Finds a representative image inside a folder (breadth-first, shallow): the first image in the
+ * gallery's sort order. Uses the memoised full listing (shared with the folder page), so the cover
+ * matches the first photo the user sees when opening the folder.
+ */
 export async function getCoverUrl(share: string, id: string): Promise<string | null> {
   return memo(share, `cover:${id}`, async () => {
     let queue = [id];
     for (let depth = 0; depth < 3 && queue.length; depth++) {
       const next: string[] = [];
       for (const folderId of queue.slice(0, 4)) {
-        const page: { value: DriveItem[] } = await drive(
-          share,
-          `/items/${folderId}/children?$top=60&$select=${SELECT}&$expand=thumbnails`,
-        );
-        const img = page.value.find((i) => i.image && i.thumbnails?.length);
-        if (img) return sizedThumb(img.thumbnails![0], 640) ?? null;
-        next.push(...page.value.filter((i) => i.folder?.childCount).map((i) => i.id));
+        const { items } = await getFolder(share, [], folderId);
+        // A few tries only: an image without a drive thumbnail (still processing) shouldn't cost a call per file.
+        for (const img of items.filter((i) => i.kind === "file" && i.isImage).slice(0, 3)) {
+          const url = await getThumbUrl(share, img.id, 640);
+          if (url) return url;
+        }
+        next.push(...items.filter((i) => i.kind === "folder" && i.childCount).map((i) => i.id));
       }
       queue = next;
     }
