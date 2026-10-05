@@ -9,7 +9,8 @@ stores or proxies file bytes. **Thumbnails/previews go through `/api/thumb`** (n
 URLs stay out of page HTML and every image load re-checks the share token — see `SECURITY.md`.
 
 Stack: Next.js 16 (App Router, Turbopack, `src/proxy.ts`), React 19, Tailwind v4, Supabase (Postgres via the
-service-role key only), `client-zip`, lucide icons. No test suite yet.
+service-role key only), `client-zip`, lucide icons, Vercel Analytics + Speed Insights (in `layout.tsx`). Hosted on
+Vercel. No test suite yet. `SECURITY.md` is the human-readable security overview; keep it in step with the model below.
 
 ## Commands
 
@@ -24,6 +25,9 @@ npm run build
 Verify changes with `typecheck` + `lint`, then in the browser preview. For quick one-off checks, write a
 throwaway `scripts/tmp-*.ts`, run it with `npx tsx --env-file=.env.local scripts/tmp-x.ts < /dev/null`, and delete it.
 The package is CommonJS, so wrap top-level `await` in `async function main()`.
+
+Load test (against `next build && next start`, not `next dev`; mints its own cookies, prints no secrets):
+`npx tsx --env-file=.env.local scripts/loadtest.ts [baseUrl] [users] [seconds] < /dev/null`.
 
 ## Layout
 
@@ -40,7 +44,11 @@ src/lib/share-types.ts          client-safe share types/helpers (EXPIRY_OPTIONS,
 src/lib/share-emails.ts         share-link email gate: signed per-link cookie, canViewShare, share_emails queries (server-only)
 src/lib/access.ts               decides which event a media API request may read (session or signed share item)
 src/lib/format.ts               URL builders: browseHref, shareHref, downloadHref, coverSrc, thumbSrc (carry t/sig)
-src/lib/zip-download.ts         browser-side zip: /api/manifest -> fetch OneDrive URLs -> client-zip -> disk
+src/lib/zip-download.ts         browser-side zip: /api/manifest -> fetch OneDrive URLs -> (optional compress) -> client-zip -> disk
+src/lib/image-compress.ts       browser-side resize/re-encode (createImageBitmap + canvas; JPG/WebP/PNG); UI in components/compress-dialog.tsx
+src/lib/selection-store.ts      cross-folder selection kept in sessionStorage (`smm:selection`), subscribe/getSelection store
+src/lib/nodes.ts                `nodes` index row type + NodeRow -> MediaItem for the search/top pages
+src/lib/email.ts                best-effort sendEmail via the AIM Congress generic email API (never throws; server-only)
 src/lib/sync/delta-sync.ts      OneDrive delta feed -> Supabase `nodes` (resumable cursor + `locked_until` lease in `event_sync`)
 src/lib/sync/status.ts          per-event index status for the event cards (server-only), plain-language sync errors
 src/app/e/[slug]/[[...path]]    event folder browser (team)
@@ -53,10 +61,11 @@ src/app/api/auth/sso, sso-login Microsoft SSO start (sets state cookie) and brok
 src/app/users                   admin-only: add/remove SSO users, approve/reject pending access requests
 src/app/requests                photo requests: Inbox tab (event's coordinator; admin sees all) / Sent tab (own requests), /requests/[id] shows the picked photos in the Gallery
 src/lib/requests.ts             photo_requests queries + canHandle (server-only); client-safe types/labels in request-types.ts
+src/app/settings                admin-only: rename events, set each event's marketing coordinator
 src/app/search                  index search (Supabase `search_nodes` RPC)
 src/app/top                     most liked photos (`top_liked` RPC, event filter `?e=`); likes live in `photo_likes` via `lib/likes.ts` + `app/likes/actions.ts`
 src/app/api/{download,thumb,cover}/[id], api/manifest   media APIs (302s to OneDrive / JSON)
-src/app/api/sync                Vercel Cron entry (Bearer CRON_SECRET)
+src/app/api/sync                Vercel Cron entry (Bearer CRON_SECRET), daily 22:00 UTC via vercel.json, maxDuration 300
 supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQL editor, in order
 ```
 
@@ -141,6 +150,15 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
   - Photos have square corners and 2px contact-sheet gutters. Corners are `rounded-md` for controls and
     `rounded-lg` for dialogs and panels.
   - Dialogs use native `<dialog>` + `showModal()`, and forms use `useActionState`. Match existing components.
+- Image compression and zipping happen in the browser only; the server never touches file bytes. Compress is
+  offered for images only (`isImagePath`).
+- Slow side work after a response (initial/background sync, download counting, `touchLogin`) uses `after()` from
+  `next/server` and must swallow its own errors.
+- `/api/thumb` and `/api/cover` 302 with `private, max-age=900` (pre-signed URLs expire, so keep it short);
+  download/manifest responses are `no-store`.
+- Outgoing mail (`sendEmail`): a new photo request emails the event's coordinator. The API's firewall 403s Node's
+  default User-Agent and rejects bodies containing localhost URLs, so dev mails go out without the link.
+  Escape all user text with `escapeHtml`.
 - Dates rendered on both server and client use a fixed locale (`en-GB`) to avoid hydration mismatches.
 - `AGENTS.md` is regenerated by `next dev`. Leave it and the `@AGENTS.md` import in place.
 
@@ -191,4 +209,6 @@ reads or writes.
   broker for a signed token to close this.
 - Very large "Download folder" manifests are built in one request (limit 25k files, 300s).
 - `search_nodes` doesn't escape `%`/`_` in the query.
-- Nothing is committed to git yet beyond the create-next-app initial commit.
+- The git repo root is `media-manager/` (the parent folder holds only `.claude/` + `.impeccable/` tooling).
+- An `impeccable` design critique (`../.impeccable/critique/`) scored 25/40; open items include no `aria-live`
+  for zip progress and no size shown before "Download folder".
