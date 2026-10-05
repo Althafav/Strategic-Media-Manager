@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { getEvent } from "@/lib/events";
 import type { LikeState } from "@/lib/like-types";
@@ -16,6 +17,8 @@ export async function setLikeAction(eventSlug: string, itemId: string, like: boo
   if (!event) return { error: "Event not found." };
   try {
     const count = await setLike(event.id, itemId, shareOwner(session), like);
+    // Drops the browser's cached copies of this event's folders (staleTimes), so going back shows the new like.
+    revalidatePath(`/e/${encodeURIComponent(event.slug)}`, "layout");
     if (session.role !== "admin") return { count, mine: like };
     const by = await likersOf([itemId], event.id).catch(() => null);
     return { count, mine: like, by: by?.get(`${event.id}/${itemId}`) ?? [] };

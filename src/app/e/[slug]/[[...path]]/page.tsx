@@ -34,20 +34,24 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
   if (!event) notFound();
   const path = rawPath.map(decode);
 
+  const session = await getSession();
+  if (!session) redirect("/login");
+  // Start the Supabase reads alongside the (slower) OneDrive listing instead of after it.
+  const extras = Promise.all([
+    getEventLikes(event.id, event.slug, shareOwner(session), session.role === "admin").catch(() => ({})),
+    listUsers().catch(() => []),
+    getEventDownloads(event.id, event.slug).catch(() => ({})),
+  ]);
   const result = await getFolder(event.share_url, path).catch((e) => {
     if (e instanceof NotFoundError) notFound();
     throw e;
   });
   const items = result.items.map((i) => withPreviews({ ...i, event: event.slug }));
   const title = path.length ? cleanName(result.folder.name) : event.title;
-  // null when the shares table doesn't exist yet (migration 0003 not run).
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const [shares, likes, users, downloads] = await Promise.all([
+  const [shares, [likes, users, downloads]] = await Promise.all([
+    // null when the shares table doesn't exist yet (migration 0003 not run).
     listShares({ eventId: event.id, folderId: result.folder.id, createdBy: ownerFilter(session) }).catch(() => null),
-    getEventLikes(event.id, event.slug, shareOwner(session), session.role === "admin").catch(() => ({})),
-    listUsers().catch(() => []),
-    getEventDownloads(event.id, event.slug).catch(() => ({})),
+    extras,
   ]);
   const admin = session.role === "admin";
   const activeUsers = users.filter((u) => !isPending(u)).map((u) => ({ email: u.email, label: u.name || u.email }));
