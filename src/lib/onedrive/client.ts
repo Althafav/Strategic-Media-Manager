@@ -72,17 +72,21 @@ async function listAll(share: string, base: string, query: string): Promise<Driv
 
 // Short in-memory cache: thumbnail URLs are signed with the session token, so
 // never cache longer than the token lives.
-const cache = new Map<string, { at: number; value: unknown }>();
+// The in-flight promise is cached, so simultaneous misses share one OneDrive fetch (a cold 1,000-item
+// folder takes seconds); a failed fetch is dropped so the next caller retries.
+const cache = new Map<string, { at: number; value: Promise<unknown> }>();
 const TTL_MS = 5 * 60 * 1000;
 
 async function memo<T>(share: string, key: string, fn: () => Promise<T>): Promise<T> {
   const fullKey = `${share}|${key}`;
   const hit = cache.get(fullKey);
   const { expiresAt } = await getSession(share);
-  if (hit && Date.now() - hit.at < TTL_MS && expiresAt > Date.now() + TTL_MS) return hit.value as T;
-  const value = await fn();
+  if (hit && Date.now() - hit.at < TTL_MS && expiresAt > Date.now() + TTL_MS) return hit.value as Promise<T>;
+  const value = fn();
   if (cache.size > 5000) cache.clear();
-  cache.set(fullKey, { at: Date.now(), value });
+  const entry = { at: Date.now(), value };
+  cache.set(fullKey, entry);
+  value.catch(() => cache.get(fullKey) === entry && cache.delete(fullKey));
   return value;
 }
 
@@ -101,7 +105,9 @@ export async function getFolder(share: string, path: string[], baseId?: string) 
     // path-addressed /children, so resolve the id first.
     const self = await drive<DriveItem>(share, `${await itemPath(share, path, baseId)}?$select=${SELECT}`);
     if (!self.folder) throw new NotFoundError(path.join("/"));
-    const children = await listAll(share, `/items/${self.id}`, `$select=${SELECT}&$expand=thumbnails`);
+    // No $expand=thumbnails: it made listings ~3x slower and the page only needs `hasThumb`, which toMediaItem
+    // derives from the image/video facets (thumbnails themselves come from /api/thumb).
+    const children = await listAll(share, `/items/${self.id}`, `$select=${SELECT}`);
     const items = children.map(toMediaItem).sort(byKindThenName);
     return { folder: toMediaItem(self), items };
   });
@@ -191,20 +197,61 @@ export async function buildManifest(
   out: ManifestEntry[] = [],
   limit = 25_000,
 ): Promise<ManifestEntry[]> {
-  const select = `$select=${SELECT},@content.downloadUrl`;
+  // Cached per (share, ids): a walk costs ~1s per folder page, so concurrent or repeated requests share one.
+  // The in-flight promise is cached too, which dedupes simultaneous requests. Copies go out because
+  // callers add t/sig to the entries.
+  const key = `${share}|${event}|${limit}|${ids.join(",")}`;
+  const { expiresAt } = await getSession(share);
+  let hit = manifestCache.get(key);
+  if (!hit || Date.now() - hit.at >= MANIFEST_TTL_MS || expiresAt <= Date.now() + MANIFEST_TTL_MS) {
+    if (manifestCache.size >= 20) manifestCache.delete(manifestCache.keys().next().value!);
+    const promise = walkManifest(share, event, ids, limit);
+    hit = { at: Date.now(), promise };
+    manifestCache.set(key, hit);
+    promise.catch(() => manifestCache.get(key) === hit && manifestCache.delete(key)); // never cache a failure
+  }
+  const files = await hit.promise;
+  for (const f of files) out.push({ ...f });
+  if (out.length > limit) throw new Error(`Selection exceeds ${limit} files`);
+  return out;
+}
 
-  async function visit(item: DriveItem, prefix: string) {
-    if (out.length >= limit) throw new Error(`Selection exceeds ${limit} files`);
-    if (item.folder) {
-      const children = await listAll(share, `/items/${item.id}`, select);
-      for (const child of children) await visit(child, `${prefix}${item.name}/`);
-    } else if (item["@content.downloadUrl"]) {
-      out.push({ id: item.id, event, path: prefix + item.name, size: item.size ?? 0, url: item["@content.downloadUrl"] });
+// The URLs inside are pre-authenticated and short-lived, so keep this well under their lifetime.
+const MANIFEST_TTL_MS = 5 * 60 * 1000;
+const manifestCache = new Map<string, { at: number; promise: Promise<ManifestEntry[]> }>();
+/** Folder pages fetched at once per manifest; sequential walking made a 10k-file folder take ~2 minutes. */
+const WALK_CONCURRENCY = 6;
+
+async function walkManifest(share: string, event: string, ids: string[], limit: number): Promise<ManifestEntry[]> {
+  const select = `$select=${SELECT},@content.downloadUrl`;
+  let count = 0;
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  const slot = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    while (active >= WALK_CONCURRENCY) await new Promise<void>((r) => waiting.push(r));
+    active++;
+    try {
+      return await fn();
+    } finally {
+      active--;
+      waiting.shift()?.();
     }
+  };
+
+  // Returns entries in listing order, so the result is deterministic despite the parallel fetches.
+  async function visit(item: DriveItem, prefix: string): Promise<ManifestEntry[]> {
+    if (item.folder) {
+      const children = await slot(() => listAll(share, `/items/${item.id}`, select));
+      const parts = await Promise.all(children.map((child) => visit(child, `${prefix}${item.name}/`)));
+      return parts.flat();
+    }
+    if (!item["@content.downloadUrl"]) return [];
+    if (++count > limit) throw new Error(`Selection exceeds ${limit} files`);
+    return [{ id: item.id, event, path: prefix + item.name, size: item.size ?? 0, url: item["@content.downloadUrl"] }];
   }
 
-  for (const id of ids) await visit(await drive<DriveItem>(share, `/items/${id}?${select}`), "");
-  return out;
+  const roots = await Promise.all(ids.map((id) => slot(() => drive<DriveItem>(share, `/items/${id}?${select}`))));
+  return (await Promise.all(roots.map((root) => visit(root, "")))).flat();
 }
 
 function sizedThumb(t: NonNullable<DriveItem["thumbnails"]>[number], px: number): string | undefined {
@@ -240,7 +287,7 @@ function toMediaItem(i: DriveItem): Omit<MediaItem, "event"> {
     modifiedAt: i.lastModifiedDateTime,
     // The raw drive thumbnail URL is never emitted to the browser: callers build /api/thumb URLs
     // with withPreviews() so every image load re-checks the share token. See SECURITY.md.
-    hasThumb: !!thumb,
+    hasThumb: !!thumb || !!i.image || isVideo,
   };
 }
 

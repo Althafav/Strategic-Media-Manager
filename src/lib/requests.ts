@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import type { Session } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { sendEmail } from "@/lib/email";
+import { appBaseUrl } from "@/lib/sso";
 import { listEvents, type EventRow } from "@/lib/events";
 import { thumbSrc } from "@/lib/format";
 import { nodeToItem, type NodeRow } from "@/lib/nodes";
@@ -66,7 +68,7 @@ export async function createRequest(
     }
   }
 
-  const { error } = await db()
+  const { data: created, error } = await db()
     .from("photo_requests")
     .insert({
       event_id: input.event.id,
@@ -77,8 +79,20 @@ export async function createRequest(
       ...(items
         ? { items: items.map(({ id, name, kind, path }) => ({ id, name: name.slice(0, 300), kind, ...(path ? { path } : {}) })) }
         : {}),
-    });
+    })
+    .select("id")
+    .single();
   if (error) return { ok: false, error: migrationHint(error.message) ?? error.message };
+
+  // Notify the coordinator. Best-effort: the request is already saved, so a mail failure doesn't fail it.
+  const base = await appBaseUrl();
+  // The email API's firewall rejects bodies containing a localhost URL, so dev submissions go out without the link.
+  const link = /^https?:\/\/(localhost|127\.0\.0\.1)\b/.test(base) ? "" : `\n\nView and answer the request: ${base}/requests/${created.id}`;
+  await sendEmail({
+    to: input.event.coordinator_email,
+    subject: `Photo request for ${input.event.title}`,
+    body: `${session.email ?? "The admin"} requested photos from ${input.event.title}:\n\n${message}${link}`,
+  });
   return { ok: true };
 }
 
