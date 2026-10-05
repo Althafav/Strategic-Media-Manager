@@ -5,6 +5,8 @@ import { isAllowedUser, normalizeEmail, requestAccess, touchLogin } from "@/lib/
 
 /** Broker callback: /sso-login?email=<address>. See lib/sso.ts for what is (and isn't) verified. */
 export async function GET(request: NextRequest) {
+  // TEMP: inspect what the broker sends back. Remove once confirmed.
+  console.log("SSO callback", Object.fromEntries(request.nextUrl.searchParams), request.headers.get("referer"));
   const email = normalizeEmail(request.nextUrl.searchParams.get("email") ?? "");
   let next = "/";
   let started = false;
