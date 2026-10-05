@@ -87,11 +87,14 @@ export async function createRequest(
   // Notify the coordinator. Best-effort: the request is already saved, so a mail failure doesn't fail it.
   const base = await appBaseUrl();
   // The email API's firewall rejects bodies containing a localhost URL, so dev submissions go out without the link.
-  const link = /^https?:\/\/(localhost|127\.0\.0\.1)\b/.test(base) ? "" : `\n\nView and answer the request: ${base}/requests/${created.id}`;
+  const href = `${base}/requests/${created.id}`;
+  const link = /^https?:\/\/(localhost|127\.0\.0\.1)\b/.test(base) ? "" : `<p><a href="${escapeHtml(href)}">View and answer the request</a></p>`;
   await sendEmail({
     to: input.event.coordinator_email,
     subject: `Photo request for ${input.event.title}`,
-    body: `${session.email ?? "The admin"} requested photos from ${input.event.title}:\n\n${message}${link}`,
+    body:
+      `<p>${escapeHtml(session.email ?? "The admin")} requested photos from ${escapeHtml(input.event.title)}:</p>` +
+      `<p>${escapeHtml(message).replace(/\r?\n/g, "<br>")}</p>${link}`,
   });
   return { ok: true };
 }
@@ -307,6 +310,10 @@ export async function requestMedia(rows: PhotoRequestRow[], events: EventRow[]):
     );
   }
   return out;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function migrationHint(message: string): string | null {

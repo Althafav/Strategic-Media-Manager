@@ -83,7 +83,7 @@ export function RequestControls({
         maxLength={MAX_REQUEST_LENGTH}
         value={nextNote}
         onChange={(e) => setNextNote(e.currentTarget.value)}
-        placeholder="Note to the requester (optional), e.g. where to find the photos"
+        placeholder="Note to the requester"
         className="rounded-md bg-background border border-border px-3 py-2 text-sm min-h-9 field-sizing-content outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
       />
       <div className="flex flex-wrap gap-2">
