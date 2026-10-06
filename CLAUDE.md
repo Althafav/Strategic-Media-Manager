@@ -114,7 +114,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
    - Thumbnails/previews are built by `withPreviews` (`format.ts`) as `/api/thumb` URLs carrying
      `t`/`sig`; `toMediaItem` emits only `hasThumb`. Never embed a raw OneDrive thumbnail URL in a page.
    - `proxy.ts` lets `/s/*` through, and lets media APIs through only when `t` is present.
-   - **Email gate** (migration 0014, `lib/share-emails.ts`): a visitor must enter an email before the share
+   - **Email gate** (migration 0014, `lib/share-emails.ts`): a visitor must enter their full name and email before the share
      page loads anything from OneDrive. `submitShareEmail` stores it in `share_emails` and sets the signed cookie
      `smm_gate_<token>` (path `/`, 30 days). The page, `resolveItemAccess` and `/api/manifest` require it via
      `canViewShare` (team sessions skip the gate, and nothing is recorded for them). Emails aren't verified,
@@ -174,7 +174,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
@@ -184,7 +184,7 @@ here; DDL can't be run from the app. Tables:
 - `photo_likes` (one row per team member per liked item; owner = `shareOwner`; team only, never on share pages)
 - `item_downloads` (per-file download count, PK `(event_id, item_id)`; `record_item_downloads(ev, ids)` RPC adds 1 per id)
 - `folder_covers` (admin's cover pick per folder, PK `(event_id, folder_id)`; set from the lightbox "Set as cover" on event pages, must be an image directly in that folder. `/api/cover` uses picks first, also for parent folders that fall back to a subfolder; otherwise the first image in name order. Folder tiles add `&v=` from the picks so a change skips the 15-min cached redirect)
-- `share_emails` (one row per link + email entered at the gate; `record_share_email` RPC upserts and enforces the cap; `share_id` set null when the link is deleted)
+- `share_emails` (one row per link + email entered at the gate, plus the visitor's full `name` (0017, latest wins); `record_share_email` RPC upserts and enforces the cap; `share_id` set null when the link is deleted)
 - `photo_requests` (a team member asks the event's coordinator for photos; `requested_by`/`resolved_by` = `shareOwner`).
   `events.coordinator_email` is the marketing coordinator: at most one per event, set only by the admin
   (`setEventCoordinator`, must be an active app_user) on /settings or the Add event form. /settings also renames

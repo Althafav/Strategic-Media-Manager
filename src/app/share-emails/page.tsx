@@ -28,7 +28,7 @@ export default async function ShareEmailsPage({ searchParams }: PageProps<"/shar
         <div className="flex-1 min-w-64">
           <h1 className="display text-5xl">Share link emails</h1>
           <p className="text-subtle mt-1">
-            Visitors enter an email before a share link shows anything. Only you can see this list.
+            Visitors enter their name and email before a share link shows anything. Only you can see this list.
           </p>
         </div>
         {rows && rows.length > 0 && (
@@ -67,7 +67,8 @@ export default async function ShareEmailsPage({ searchParams }: PageProps<"/shar
             {rows.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
                 <div className="flex-1 min-w-56">
-                  <p className="font-medium truncate">{r.email}</p>
+                  <p className="font-medium truncate">{r.name || r.email}</p>
+                  {r.name && <p className="text-sm truncate">{r.email}</p>}
                   <p className="text-sm text-subtle truncate">
                     {r.share_id ? (
                       <Link href={shareHref(r.share_token)} className="hover:underline">

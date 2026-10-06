@@ -15,6 +15,8 @@ export type ShareEmailRow = {
   share_label: string | null;
   event_id: string | null;
   email: string;
+  /** Full name from the gate (migration 0017). Null for rows from before it. */
+  name?: string | null;
   first_seen_at: string;
   last_seen_at: string;
   visit_count: number;
@@ -57,8 +59,12 @@ export async function canViewShare(token: string): Promise<boolean> {
 }
 
 /** Returns false when the link is gone or has reached its email cap. Throws before migration 0014. */
-export async function recordShareEmail(token: string, email: string): Promise<boolean> {
-  const { data, error } = await db().rpc("record_share_email", { tok: token, mail: email, cap: MAX_EMAILS_PER_SHARE });
+export async function recordShareEmail(token: string, email: string, name: string): Promise<boolean> {
+  let { data, error } = await db().rpc("record_share_email", { tok: token, mail: email, full_name: name, cap: MAX_EMAILS_PER_SHARE });
+  if (error?.code === "PGRST202") {
+    // Migration 0017 hasn't run: the function has no name parameter yet. Keep the gate working without it.
+    ({ data, error } = await db().rpc("record_share_email", { tok: token, mail: email, cap: MAX_EMAILS_PER_SHARE }));
+  }
   if (error) throw error;
   return data === true;
 }

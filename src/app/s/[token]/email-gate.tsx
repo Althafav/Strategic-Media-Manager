@@ -7,7 +7,7 @@ import { submitShareEmail, type GateState } from "./actions";
 const input =
   "w-full h-10 rounded-md bg-background border border-border px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/25";
 
-/** Shown instead of a share link's content until the visitor enters an email. */
+/** Shown instead of a share link's content until the visitor enters their name and email. */
 export function EmailGate({ token, back }: { token: string; back: string }) {
   const [state, action, pending] = useActionState<GateState, FormData>(submitShareEmail, {});
 
@@ -15,18 +15,30 @@ export function EmailGate({ token, back }: { token: string; back: string }) {
     <div className="py-20 max-w-sm mx-auto">
       <div className="rounded-lg border border-border bg-surface p-6">
         <Mail className="size-8 text-subtle" />
-        <h1 className="display text-3xl mt-3">Enter your email to view these files</h1>
+        <h1 className="display text-3xl mt-3">Enter your details to view these files</h1>
 
         <form action={action} className="space-y-4 mt-5">
           <input type="hidden" name="token" value={token} />
           <input type="hidden" name="back" value={back} />
+          <label className="block">
+            <span className="text-sm font-medium">Full name</span>
+            <input
+              name="name"
+              required
+              autoFocus
+              autoComplete="name"
+              minLength={2}
+              maxLength={120}
+              defaultValue={state.name}
+              className={`${input} mt-1.5`}
+            />
+          </label>
           <label className="block">
             <span className="text-sm font-medium">Email</span>
             <input
               name="email"
               type="email"
               required
-              autoFocus
               autoComplete="email"
               maxLength={254}
               defaultValue={state.email}

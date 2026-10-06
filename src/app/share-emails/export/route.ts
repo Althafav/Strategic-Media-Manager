@@ -14,8 +14,9 @@ export async function GET(req: Request) {
   const eventTitle = new Map(events.map((e) => [e.id, e.title]));
 
   const lines = [
-    ["Email", "Link", "Event", "Link deleted", "First visit", "Last visit", "Visits"],
+    ["Name", "Email", "Link", "Event", "Link deleted", "First visit", "Last visit", "Visits"],
     ...rows.map((r) => [
+      r.name ?? "",
       r.email,
       r.share_label ?? "",
       (r.event_id && eventTitle.get(r.event_id)) || "",

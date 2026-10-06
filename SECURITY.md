@@ -31,7 +31,7 @@ the authoritative per-layer rules.
   `?t=&sig=` and `lib/access.ts` `resolveItemAccess` verifies both. Sigs can't be forged, and a
   token only ever resolves items within its own event's drive.
 - Email gate (`lib/share-emails.ts`, migration 0014): a share page shows only an email form, and
-  loads nothing from OneDrive, until the visitor submits an email. That sets the httpOnly cookie
+  loads nothing from OneDrive, until the visitor submits their full name and email. That sets the httpOnly cookie
   `smm_gate_<token>` = `HMAC(AUTH_SECRET, "gate:<token>")` (path `/`, 30 days). The page,
   `resolveItemAccess` and `/api/manifest` all require it (`canViewShare`), or a team session. So a
   copied `?t=&sig=` URL doesn't work in a browser that never passed the gate. Emails aren't verified,
