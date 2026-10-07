@@ -16,6 +16,26 @@ export async function recordItemDownloads(eventId: string, ids: string[]): Promi
   }
 }
 
+export type TopDownload = { event_id: string; item_id: string; downloads: number };
+
+/** Most-downloaded files across the given events (pass only visible events). Throws if 0015 hasn't run. */
+export async function topDownloaded(eventIds: string[], limit = 100): Promise<TopDownload[]> {
+  if (!eventIds.length) return [];
+  const { data, error } = await db()
+    .from("item_downloads")
+    .select("event_id,item_id,count")
+    .in("event_id", eventIds)
+    .order("count", { ascending: false })
+    .order("last_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data as { event_id: string; item_id: string; count: number | string }[]).map((r) => ({
+    event_id: r.event_id,
+    item_id: r.item_id,
+    downloads: Number(r.count),
+  }));
+}
+
 /** Download counts for one event, keyed by `itemKey` (`<slug>/<id>`). */
 export async function getEventDownloads(eventId: string, slug: string): Promise<Record<string, number>> {
   const { data, error } = await db().from("item_downloads").select("item_id,count").eq("event_id", eventId);

@@ -4,6 +4,7 @@ import { getRootCovers } from "@/lib/covers";
 import { isIndexConfigured } from "@/lib/db";
 import { listEvents } from "@/lib/events";
 import { isPending, listUsers } from "@/lib/users";
+import { EventOrderList } from "./event-order-list";
 import { EventSettingsRow } from "./event-settings-row";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +25,8 @@ export default async function SettingsPage() {
       <div className="pt-10 mb-6">
         <h1 className="display text-5xl">Settings</h1>
         <p className="text-subtle mt-1">
-          Rename events, choose each one&apos;s cover photo and its marketing coordinator, who receives its photo requests. Renaming doesn&apos;t
-          change the event&apos;s link.
+          Reorder events, rename them, choose each one&apos;s cover photo and its marketing coordinator, who receives its photo requests.
+          Renaming doesn&apos;t change the event&apos;s link.
         </p>
       </div>
 
@@ -38,21 +39,32 @@ export default async function SettingsPage() {
       {events.length === 0 ? (
         <p className="py-16 text-center text-subtle">No events yet.</p>
       ) : (
-        <section>
-          <h2 className="font-medium mb-2">Events</h2>
-          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-            {events.map((e) => (
-              <EventSettingsRow
-                key={e.id}
-                slug={e.slug}
-                title={e.title}
-                coordinator={hasCoordinators ? { current: e.coordinator_email ?? null, users } : undefined}
-                rootId={e.root_id}
-                coverId={e.root_id ? covers[e.root_id] : undefined}
+        <>
+          {events.length > 1 && (
+            <section className="mb-8">
+              <h2 className="font-medium mb-2">Event order</h2>
+              <EventOrderList
+                key={events.map((e) => `${e.slug}:${e.title}`).join("\n")}
+                events={events.map(({ slug, title }) => ({ slug, title }))}
               />
-            ))}
-          </ul>
-        </section>
+            </section>
+          )}
+          <section>
+            <h2 className="font-medium mb-2">Events</h2>
+            <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+              {events.map((e) => (
+                <EventSettingsRow
+                  key={e.id}
+                  slug={e.slug}
+                  title={e.title}
+                  coordinator={hasCoordinators ? { current: e.coordinator_email ?? null, users } : undefined}
+                  rootId={e.root_id}
+                  coverId={e.root_id ? covers[e.root_id] : undefined}
+                />
+              ))}
+            </ul>
+          </section>
+        </>
       )}
     </div>
   );

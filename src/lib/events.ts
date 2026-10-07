@@ -101,6 +101,17 @@ export async function renameEvent(eventId: string, title: string): Promise<void>
   if (error) throw error;
 }
 
+/**
+ * Admin only (checked by the caller). Stores the display order: ids[0] first. Starts at 1 so a newly added
+ * event (default sort 0) shows first. Events not listed keep their current sort.
+ */
+export async function reorderEvents(ids: string[]): Promise<void> {
+  const results = await Promise.all(ids.map((id, i) => db().from("events").update({ sort: i + 1 }).eq("id", id)));
+  cached = null;
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw failed.error;
+}
+
 /** Admin only (checked by the caller). One coordinator per event: setting a new one replaces the old; null clears it. */
 export async function setCoordinator(eventId: string, email: string | null): Promise<void> {
   const { error } = await db().from("events").update({ coordinator_email: email }).eq("id", eventId);

@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, requireSession } from "@/lib/auth";
-import { createEvent, deleteEvent, getEvent, renameEvent, setCoordinator } from "@/lib/events";
+import { createEvent, deleteEvent, getEvent, listEvents, renameEvent, reorderEvents, setCoordinator } from "@/lib/events";
 import { isAllowedUser, normalizeEmail } from "@/lib/users";
 import { runDeltaSync, SyncBusyError } from "@/lib/sync/delta-sync";
 import { describeSyncError } from "@/lib/sync/status";
@@ -103,6 +103,23 @@ export async function renameEventAction(slug: string, title: string): Promise<{ 
     await renameEvent(event.id, title);
   } catch (e) {
     return { error: (e as Error).message || "Could not rename the event." };
+  }
+  revalidatePath("/", "layout");
+  return {};
+}
+
+/** Saves the display order of events (slugs in the new order, first = top). Admin only. */
+export async function reorderEventsAction(slugs: string[]): Promise<{ error?: string }> {
+  const denied = await requireAdmin();
+  if (denied) return { error: denied };
+  if (!Array.isArray(slugs) || new Set(slugs).size !== slugs.length) return { error: "Invalid order." };
+  const bySlug = new Map((await listEvents({ includeHidden: true })).map((e) => [e.slug, e.id]));
+  const ids = slugs.map((s) => bySlug.get(s));
+  if (ids.some((id) => !id)) return { error: "An event was removed. Reload the page and try again." };
+  try {
+    await reorderEvents(ids as string[]);
+  } catch (e) {
+    return { error: (e as Error).message || "Could not save the order." };
   }
   revalidatePath("/", "layout");
   return {};

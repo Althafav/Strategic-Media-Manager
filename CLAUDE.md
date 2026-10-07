@@ -47,7 +47,7 @@ src/lib/format.ts               URL builders: browseHref, shareHref, downloadHre
 src/lib/zip-download.ts         browser-side zip: /api/manifest -> fetch OneDrive URLs -> (optional compress) -> client-zip -> disk
 src/lib/image-compress.ts       browser-side resize/re-encode (createImageBitmap + canvas; JPG/WebP/PNG); UI in components/compress-dialog.tsx
 src/lib/covers.ts               admin-picked folder covers (folder_covers, migration 0016): getEventCovers, setFolderCover; action in app/covers/actions.ts
-src/lib/downloads.ts            per-file download counts (item_downloads, migration 0015): recordItemDownloads, getEventDownloads
+src/lib/downloads.ts            per-file download counts (item_downloads, migration 0015): recordItemDownloads, getEventDownloads, topDownloaded
 src/lib/selection-store.ts      cross-folder selection kept in sessionStorage (`smm:selection`), subscribe/getSelection store
 src/lib/nodes.ts                `nodes` index row type + NodeRow -> MediaItem for the search/top pages
 src/lib/email.ts                best-effort sendEmail via the AIM Congress generic email API (never throws; server-only)
@@ -64,9 +64,10 @@ src/app/api/auth/sso, sso-login Microsoft SSO start (sets state cookie) and brok
 src/app/users                   admin-only: add/remove SSO users, approve/reject pending access requests
 src/app/requests                photo requests: Inbox tab (event's coordinator; admin sees all) / Sent tab (own requests), /requests/[id] shows the picked photos in the Gallery
 src/lib/requests.ts             photo_requests queries + canHandle (server-only); client-safe types/labels in request-types.ts
-src/app/settings                admin-only: rename events, pick each event's cover (event-cover-picker.tsx: browse any folder, stored as the root folder's folder_covers row), set each event's marketing coordinator
+src/app/settings                admin-only: reorder events (event-order-list.tsx: drag or arrows, saves `events.sort` via `reorderEventsAction`), rename events, pick each event's cover (event-cover-picker.tsx: browse any folder, stored as the root folder's folder_covers row), set each event's marketing coordinator
 src/app/search                  index search (Supabase `search_nodes` RPC)
 src/app/top                     most liked photos (`top_liked` RPC, event filter `?e=`); likes live in `photo_likes` via `lib/likes.ts` + `app/likes/actions.ts`
+src/app/top-downloads           admin-only: most downloaded files (`topDownloaded`, event filter `?e=`), linked from the user menu for the admin only
 src/app/api/{download,thumb,cover}/[id], api/manifest   media APIs (302s to OneDrive / JSON)
 src/app/api/sync                Vercel Cron entry (Bearer CRON_SECRET), daily 22:00 UTC via vercel.json, maxDuration 300
 supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQL editor, in order
