@@ -126,7 +126,7 @@ export async function listAssigned(session: Session): Promise<{ open: PhotoReque
   const ids = await handledEventIds(session);
   if (ids?.length === 0) return { open: [], answered: [] };
   const scoped = (statuses: RequestStatus[]) => {
-    const query = db().from("photo_requests").select("*").in("status", statuses);
+    const query = db().from("photo_requests").select("*").in("status", statuses).is("deleted_at", null);
     return ids ? query.in("event_id", ids) : query;
   };
   const [open, answered] = await Promise.all([
@@ -144,6 +144,7 @@ export async function listMine(session: Session): Promise<PhotoRequestRow[]> {
     .from("photo_requests")
     .select("*")
     .eq("requested_by", shareOwner(session))
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) throw error;
@@ -153,7 +154,7 @@ export async function listMine(session: Session): Promise<PhotoRequestRow[]> {
 /** One request, if this session may see it: the requester, the event's coordinator, or the admin. */
 export async function getRequest(session: Session, id: string): Promise<{ request: PhotoRequestRow; event: EventRow } | null> {
   if (!UUID.test(id)) return null;
-  const { data, error } = await db().from("photo_requests").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await db().from("photo_requests").select("*").eq("id", id).is("deleted_at", null).maybeSingle();
   if (error || !data) return null;
   const request = data as PhotoRequestRow;
   const event = (await listEvents({ includeHidden: true })).find((e) => e.id === request.event_id);
@@ -176,7 +177,7 @@ export async function inboxSeenAt(): Promise<string | undefined> {
 export async function pendingCountFor(session: Session, since?: string): Promise<number> {
   const ids = await handledEventIds(session);
   if (ids?.length === 0) return 0;
-  let query = db().from("photo_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
+  let query = db().from("photo_requests").select("id", { count: "exact", head: true }).eq("status", "pending").is("deleted_at", null);
   if (ids) query = query.in("event_id", ids);
   if (since) query = query.gt("created_at", since);
   const { count, error } = await query;
@@ -222,7 +223,12 @@ export async function updateRequest(
   if (note.length > MAX_REQUEST_LENGTH) return `Keep the note under ${MAX_REQUEST_LENGTH} characters.`;
   if (!UUID.test(input.id)) return "Request not found. It may have been removed.";
 
-  const { data: row, error: readErr } = await db().from("photo_requests").select("event_id").eq("id", input.id).maybeSingle();
+  const { data: row, error: readErr } = await db()
+    .from("photo_requests")
+    .select("event_id")
+    .eq("id", input.id)
+    .is("deleted_at", null)
+    .maybeSingle();
   if (readErr) return readErr.message;
   const event = row && (await listEvents({ includeHidden: true })).find((e) => e.id === row.event_id);
   if (!event) return "Request not found. It may have been removed.";
@@ -245,7 +251,8 @@ export async function updateRequest(
 
 /**
  * Removes an answered request for everyone: the requester, the event's coordinator or the admin may do it. Open
- * requests can't be deleted (decline them first). Returns an error message, or null on success.
+ * requests can't be deleted (decline them first). It goes to the admin's recycle bin (migration 0018).
+ * Returns an error message, or null on success.
  */
 export async function deleteRequest(session: Session, id: string): Promise<string | null> {
   if (!UUID.test(id)) return "Request not found. It may have been removed.";
@@ -253,6 +260,7 @@ export async function deleteRequest(session: Session, id: string): Promise<strin
     .from("photo_requests")
     .select("event_id, status, requested_by")
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
   if (readErr) return readErr.message;
   if (!row) return "Request not found. It may have been removed.";
@@ -262,8 +270,45 @@ export async function deleteRequest(session: Session, id: string): Promise<strin
   if (!ANSWERED.includes(row.status as RequestStatus)) return "Only answered requests can be deleted.";
 
   // Status filter again: if someone reopened it meanwhile, nothing is deleted.
-  const { error } = await db().from("photo_requests").delete().eq("id", id).in("status", ANSWERED);
+  const { error } = await db()
+    .from("photo_requests")
+    .update({ deleted_at: new Date().toISOString(), deleted_by: shareOwner(session) })
+    .eq("id", id)
+    .in("status", ANSWERED)
+    .is("deleted_at", null);
   return error ? error.message : null;
+}
+
+/** Requests in the recycle bin, most recently deleted first. Admin only (checked by the caller). */
+export async function listBinnedRequests(): Promise<PhotoRequestRow[]> {
+  const { data, error } = await db()
+    .from("photo_requests")
+    .select("*")
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+  if (error) throw error;
+  return data as PhotoRequestRow[];
+}
+
+/** Takes a request out of the bin: it shows in Inbox and Sent again. */
+export async function restoreRequest(id: string): Promise<boolean> {
+  if (!UUID.test(id)) return false;
+  const { data, error } = await db()
+    .from("photo_requests")
+    .update({ deleted_at: null, deleted_by: null })
+    .eq("id", id)
+    .not("deleted_at", "is", null)
+    .select("id");
+  if (error) throw error;
+  return !!data?.length;
+}
+
+/** Deletes a binned request for good. */
+export async function purgeRequest(id: string): Promise<boolean> {
+  if (!UUID.test(id)) return false;
+  const { data, error } = await db().from("photo_requests").delete().eq("id", id).not("deleted_at", "is", null).select("id");
+  if (error) throw error;
+  return !!data?.length;
 }
 
 const VIDEO_EXT =/\.(mp4|mov|m4v|avi|mkv|webm|wmv|mts|3gp)$/i;

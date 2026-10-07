@@ -62,12 +62,12 @@ function stringList(value: FormDataEntryValue | null): string[] {
   return [];
 }
 
-/** Team members can revoke only their own links; the admin can revoke any. */
+/** Team members can revoke only their own links; the admin can revoke any. Revoked links go to the admin's recycle bin. */
 export async function revokeShareLink(id: string): Promise<{ error?: string }> {
   const session = await getSession();
   if (!session) return { error: EXPIRED };
   try {
-    const removed = await deleteShare(id, ownerFilter(session));
+    const removed = await deleteShare(id, ownerFilter(session), shareOwner(session));
     return removed ? {} : { error: "Link not found, or it was created by someone else." };
   } catch (e) {
     return { error: (e as Error).message || "Could not revoke the link." };

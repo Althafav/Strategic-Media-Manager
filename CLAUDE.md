@@ -56,6 +56,7 @@ src/lib/sync/status.ts          per-event index status for the event cards (serv
 src/app/e/[slug]/[[...path]]    event folder browser (team)
 src/app/s/[token]/[[...path]]   shared folder / picked-items view (external, no login; email gate first: s/[token]/email-gate.tsx + actions.ts)
 src/app/share-emails            admin-only: emails entered at share links, filter ?share=<token>, CSV export (export/route.ts)
+src/app/bin                     admin-only recycle bin: restore / delete forever / empty; lib/bin.ts holds BIN_DAYS + the purge
 src/app/shares                  list/revoke share links (own links; admin sees all + creator) + server actions
 src/app/events                  add/remove event server actions, /events/new form
 src/app/login                   login page (Microsoft button + admin password form) + login/logout actions
@@ -174,7 +175,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
@@ -193,6 +194,10 @@ here; DDL can't be run from the app. Tables:
   `path` is each item's own folder (a selection can span folders) and `folder_path` their common parent. Older rows
   lack `path`: fall back to `folder_path`. Requesting items already in one of your open requests is refused.
   `requester_seen_at` (0013) drives the "new reply" badge: `unseen_request_answers(owner)` RPC; opening Sent marks seen.
+
+Recycle bin (0018): revoking a share link and deleting a photo request only set `deleted_at`/`deleted_by` on
+`shares`/`photo_requests`. Every read of those tables must filter `.is("deleted_at", null)` (bin views use
+`.not("deleted_at", "is", null)`). Only the admin sees `/bin`; `/api/sync` purges rows binned over 30 days before syncing.
 
 Deleting an event cascades to nodes, sync state and shares. RLS is on with no policies: only the service role
 reads or writes.

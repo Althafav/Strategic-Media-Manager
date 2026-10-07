@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Heart, ImagePlus, Link2, LogOut, Mail, Settings, Users, type LucideIcon } from "lucide-react";
+import { Heart, ImagePlus, Link2, LogOut, Mail, Settings, Trash2, Users, type LucideIcon } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { REQUESTS_SEEN_EVENT, type RequestsSeen } from "@/lib/request-types";
 
@@ -108,6 +108,7 @@ export function UserMenu({ name, email, isAdmin, newRequests, newReplies, pendin
           {isAdmin && <MenuLink href="/share-emails" icon={Mail} label="Share link emails" />}
           {isAdmin && <MenuLink href="/users" icon={Users} label="Users" count={pendingCount} />}
           {isAdmin && <MenuLink href="/settings" icon={Settings} label="Settings" />}
+          {isAdmin && <MenuLink href="/bin" icon={Trash2} label="Recycle bin" />}
 
           <div className="border-t border-border mt-1.5 pt-1.5">
             <form action={logout}>

@@ -37,6 +37,9 @@ export type PhotoRequestRow = {
   resolved_by: string | null;
   /** Migration 0013: when the requester last saw their Sent tab. */
   requester_seen_at?: string | null;
+  /** Set while the request is in the admin's recycle bin (migration 0018). */
+  deleted_at?: string | null;
+  deleted_by?: string | null;
 };
 
 export const isRequestStatus = (v: unknown): v is RequestStatus => REQUEST_STATUSES.includes(v as RequestStatus);

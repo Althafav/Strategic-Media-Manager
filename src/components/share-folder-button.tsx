@@ -5,8 +5,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Link2, Loader2, Share2, X } from "lucide-react";
 import { createShareLink, type CreateShareState } from "@/app/shares/actions";
-import { downloadSummary, EXPIRY_OPTIONS, isItemShare, type ShareRow } from "@/lib/share-types";
-import { copyText, CopyLinkButton, RevokeLinkButton, shareUrl, ShareStatus } from "./share-link-actions";
+import {
+  downloadSummary,
+  EXPIRY_OPTIONS,
+  isItemShare,
+  type ShareRow,
+} from "@/lib/share-types";
+import {
+  copyText,
+  CopyLinkButton,
+  RevokeLinkButton,
+  shareUrl,
+  ShareStatus,
+} from "./share-link-actions";
 
 type Props = {
   event: string;
@@ -20,7 +31,13 @@ type Props = {
 const field =
   "w-full h-10 rounded-md bg-background border border-border px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/25";
 
-export function ShareFolderButton({ event, folderId, folderPath, folderName, shares }: Props) {
+export function ShareFolderButton({
+  event,
+  folderId,
+  folderPath,
+  folderName,
+  shares,
+}: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   // Links to picked items in this folder are listed on /shares, not here.
   const folderShares = shares?.filter((s) => !isItemShare(s)) ?? null;
@@ -42,22 +59,36 @@ export function ShareFolderButton({ event, folderId, folderPath, folderName, sha
       >
         {folderShares === null ? (
           <p className="text-sm rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-            Share links aren&apos;t set up yet. Run <code>supabase/migrations/0003_shares.sql</code> in the Supabase SQL
+            Share links aren&apos;t set up yet. Run{" "}
+            <code>supabase/migrations/0003_shares.sql</code> in the Supabase SQL
             editor.
           </p>
         ) : (
           <>
-            <CreateShareForm fields={{ event, folderId, folderPath: JSON.stringify(folderPath), folderName }} />
+            <CreateShareForm
+              fields={{
+                event,
+                folderId,
+                folderPath: JSON.stringify(folderPath),
+                folderName,
+              }}
+            />
             <div>
               <h3 className="text-sm font-medium mb-2">Links to this folder</h3>
               {folderShares.length ? (
                 <ul className="divide-y divide-border rounded-md border border-border max-h-64 overflow-auto">
                   {folderShares.map((s) => (
-                    <li key={s.id} className="flex items-center gap-3 px-3 py-2">
+                    <li
+                      key={s.id}
+                      className="flex items-center gap-3 px-3 py-2"
+                    >
                       <div className="flex-1 min-w-0 text-xs">
-                        <p className="font-medium text-sm truncate">{s.label || "Unnamed link"}</p>
+                        <p className="font-medium text-sm truncate">
+                          {s.label || "Unnamed link"}
+                        </p>
                         <p className="text-subtle">
-                          <ShareStatus share={s} />, {s.view_count} {s.view_count === 1 ? "view" : "views"}
+                          <ShareStatus share={s} />, {s.view_count}{" "}
+                          {s.view_count === 1 ? "view" : "views"}
                           {downloadSummary(s) && `, ${downloadSummary(s)}`}
                         </p>
                       </div>
@@ -80,7 +111,10 @@ export function ShareFolderButton({ event, folderId, folderPath, folderName, sha
 
 export function AllLinks() {
   return (
-    <Link href="/shares" className="inline-block text-xs text-foreground underline underline-offset-4 mt-2">
+    <Link
+      href="/shares"
+      className="inline-block text-xs text-foreground underline underline-offset-4 mt-2"
+    >
       All shared links
     </Link>
   );
@@ -94,7 +128,8 @@ export function ShareDialog(props: {
   onClose?: () => void;
 }) {
   const { ref, title, description, children, onClose } = props;
-  const close = (e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.closest("dialog")?.close();
+  const close = (e: React.MouseEvent<HTMLButtonElement>) =>
+    e.currentTarget.closest("dialog")?.close();
   return (
     <dialog
       ref={ref}
@@ -124,9 +159,16 @@ export function ShareDialog(props: {
 }
 
 /** Label + expiry form that creates a link from `fields` (hidden inputs) and copies it. */
-export function CreateShareForm({ fields }: { fields: Record<string, string> }) {
+export function CreateShareForm({
+  fields,
+}: {
+  fields: Record<string, string>;
+}) {
   const router = useRouter();
-  const [state, action, pending] = useActionState<CreateShareState, FormData>(createShareLink, {});
+  const [state, action, pending] = useActionState<CreateShareState, FormData>(
+    createShareLink,
+    {},
+  );
   const [agreed, setAgreed] = useState(false);
   // Each new link needs a fresh tick.
   const [lastCreated, setLastCreated] = useState(state.created);
@@ -144,19 +186,32 @@ export function CreateShareForm({ fields }: { fields: Record<string, string> }) 
 
   return (
     <>
-      <form action={action} className="grid gap-3 sm:grid-cols-[1fr_9rem_auto] sm:items-end">
+      <form
+        action={action}
+        className="grid gap-3 sm:grid-cols-[1fr_9rem_auto] sm:items-end"
+      >
         {Object.entries(fields).map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
         ))}
         <div className="sm:col-span-3 rounded-md border border-border bg-background p-3 text-sm space-y-2">
           <p className="font-medium">Before you share</p>
           <ul className="list-disc pl-5 space-y-1 text-subtle">
-            <li>You are responsible for who receives this link and how the photos are used.</li>
-            <li>
-              Share photos as they are. If a photo needs editing, cropping or retouching, ask the design team to edit
-              it and re-upload it here, then share the updated version.
+            <li className="text-red-500 font-bold">
+              This folder may contain restricted photos from the Ministry.
+              Please make sure you are sharing only the files you have selected.
+              If you choose to share the entire folder, you are fully
+              responsible for its contents and for any restricted material
+              included.
             </li>
-            <li>Anyone with the link can view and download until it expires or you revoke it.</li>
+            <li>
+              Share photos as they are. If a photo needs editing, cropping or
+              retouching, ask the design team to edit it and re-upload it here,
+              then share the updated version.
+            </li>
+            <li>
+              Anyone with the link can view and download until it expires or you
+              revoke it.
+            </li>
           </ul>
           <label className="flex items-start gap-2 pt-1 cursor-pointer">
             <input
@@ -168,7 +223,9 @@ export function CreateShareForm({ fields }: { fields: Record<string, string> }) 
               onChange={(e) => setAgreed(e.currentTarget.checked)}
               className="mt-0.5 size-4 accent-[var(--color-accent)]"
             />
-            <span className="font-medium">I understand and take responsibility for sharing these files.</span>
+            <span className="font-medium">
+              I understand and take responsibility for sharing these files.
+            </span>
           </label>
         </div>
         <label className="block">
@@ -198,19 +255,29 @@ export function CreateShareForm({ fields }: { fields: Record<string, string> }) 
           disabled={pending || !agreed}
           className="h-10 px-4 rounded-md bg-accent text-accent-foreground text-sm font-medium inline-flex items-center justify-center gap-2 disabled:opacity-60"
         >
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />} Create link
+          {pending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Link2 className="size-4" />
+          )}{" "}
+          Create link
         </button>
       </form>
 
       {state.error && (
-        <p role="alert" className="text-sm rounded-md border border-red-500/30 bg-red-500/10 text-red-600 px-3 py-2">
+        <p
+          role="alert"
+          className="text-sm rounded-md border border-red-500/30 bg-red-500/10 text-red-600 px-3 py-2"
+        >
           {state.error}
         </p>
       )}
 
       {state.created && (
         <div className="rounded-md border border-green-600/30 bg-green-600/10 p-3 space-y-2">
-          <p className="text-sm font-medium">Link created and copied to your clipboard.</p>
+          <p className="text-sm font-medium">
+            Link created and copied to your clipboard.
+          </p>
           <div className="flex gap-2">
             <input
               readOnly

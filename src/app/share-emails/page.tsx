@@ -5,6 +5,7 @@ import { isAdmin } from "@/lib/auth";
 import { listEvents } from "@/lib/events";
 import { shareHref } from "@/lib/format";
 import { listShareEmails } from "@/lib/share-emails";
+import { binnedShareIds } from "@/lib/shares";
 import { formatDate } from "@/lib/share-types";
 
 export const dynamic = "force-dynamic";
@@ -15,9 +16,10 @@ export default async function ShareEmailsPage({ searchParams }: PageProps<"/shar
   if (!(await isAdmin())) notFound();
   const { share } = await searchParams;
   const shareToken = typeof share === "string" && share ? share : undefined;
-  const [rows, events] = await Promise.all([
+  const [rows, events, binned] = await Promise.all([
     listShareEmails({ shareToken }).catch(() => null),
     listEvents({ includeHidden: true }).catch(() => []),
+    binnedShareIds(),
   ]);
   const eventTitle = new Map(events.map((e) => [e.id, e.title]));
   const exportHref = `/share-emails/export${shareToken ? `?share=${encodeURIComponent(shareToken)}` : ""}`;
@@ -70,7 +72,7 @@ export default async function ShareEmailsPage({ searchParams }: PageProps<"/shar
                   <p className="font-medium truncate">{r.name || r.email}</p>
                   {r.name && <p className="text-sm truncate">{r.email}</p>}
                   <p className="text-sm text-subtle truncate">
-                    {r.share_id ? (
+                    {r.share_id && !binned.has(r.share_id) ? (
                       <Link href={shareHref(r.share_token)} className="hover:underline">
                         {r.share_label ?? "Share link"}
                       </Link>

@@ -39,6 +39,8 @@ the authoritative per-layer rules.
 - Path traversal is blocked: `getFolder` rejects `.`, `..` and slashes, and resolves relative to the
   share's `folder_id`, so a visitor cannot climb above the shared folder.
 - Fails closed: share lookups `.catch(() => null)`; revoked/expired shares resolve to `null` → 403.
+- Revoked links stay in the admin's recycle bin (`/bin`) for 30 days (`deleted_at` set, denied like a missing link)
+  and are deleted for good by the nightly cron. Restoring one makes the same URL work again until its original expiry.
 
 ## Accepted trade-offs
 

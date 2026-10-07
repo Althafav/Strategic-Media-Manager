@@ -21,6 +21,9 @@ export type ShareRow = {
   item_ids?: string[] | null;
   /** "admin", or the SSO user's email. Null for links made before migration 0008. */
   created_by?: string | null;
+  /** Set while the link is in the admin's recycle bin (migration 0018). */
+  deleted_at?: string | null;
+  deleted_by?: string | null;
 };
 
 /** Most items one link may carry (each is looked up when the link is opened). */
