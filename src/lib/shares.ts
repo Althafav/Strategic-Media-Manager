@@ -46,6 +46,8 @@ export async function createShare(input: {
 }): Promise<ShareRow> {
   const event = await getEvent(input.eventSlug);
   if (!event) throw new Error("Event not found.");
+  // Private events: only the admin makes new links (existing links keep working, see getActiveShare).
+  if (event.hidden && input.createdBy !== "admin") throw new Error("Only the admin can share a private event.");
   const days = Number(input.expiry);
   const expires_at = input.expiry === "never" || !days ? null : new Date(Date.now() + days * 86_400_000).toISOString();
   const { data, error } = await db()

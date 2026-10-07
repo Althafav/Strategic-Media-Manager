@@ -4,7 +4,7 @@ import { EventCard } from "@/components/event-card";
 import { isAdmin } from "@/lib/auth";
 import { getRootCovers } from "@/lib/covers";
 import { isIndexConfigured } from "@/lib/db";
-import { listEvents } from "@/lib/events";
+import { listVisibleEvents } from "@/lib/events";
 import { getSyncStatuses, type SyncStatus } from "@/lib/sync/status";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export default async function Home() {
     );
   }
   const admin = await isAdmin();
-  const events = await listEvents();
+  const events = await listVisibleEvents();
   // Status is extra: the page still renders if it can't be read.
   const [sync, covers] = await Promise.all([
     getSyncStatuses(events).catch(() => new Map<string, SyncStatus>()),
@@ -43,7 +43,7 @@ export default async function Home() {
       {events.length ? (
         <section className="grid gap-4">
           {events.map((e) => (
-            <EventCard key={e.id} slug={e.slug} title={e.title} rootId={e.root_id} coverId={e.root_id ? covers[e.root_id] : undefined} itemCount={e.item_count} size={e.size} sync={sync.get(e.id)} canRemove={admin} />
+            <EventCard key={e.id} slug={e.slug} title={e.title} rootId={e.root_id} coverId={e.root_id ? covers[e.root_id] : undefined} itemCount={e.item_count} size={e.size} sync={sync.get(e.id)} isPrivate={e.hidden} canRemove={admin} />
           ))}
         </section>
       ) : (

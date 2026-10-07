@@ -36,6 +36,10 @@ the authoritative per-layer rules.
   `resolveItemAccess` and `/api/manifest` all require it (`canViewShare`), or a team session. So a
   copied `?t=&sig=` URL doesn't work in a browser that never passed the gate. Emails aren't verified,
   and each link stores at most 2,000 distinct emails. Only the admin can read them (`/share-emails`).
+- Private events (migration 0019): an event marked private is visible only to the admin and the team members the
+  admin picked (`events.viewer_emails`). Anyone else gets "not found" on the event page, from the media APIs and from
+  the zip manifest, and the event is left out of the home page, search and most liked (`canSeeEvent` in `lib/events.ts`).
+  Share links bypass this on purpose: existing links keep working, and only the admin can create new ones.
 - Path traversal is blocked: `getFolder` rejects `.`, `..` and slashes, and resolves relative to the
   share's `folder_id`, so a visitor cannot climb above the shared folder.
 - Fails closed: share lookups `.catch(() => null)`; revoked/expired shares resolve to `null` → 403.

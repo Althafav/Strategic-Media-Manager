@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CircleAlert, CircleDashed, Clock, Images, Loader2 } from "lucide-react";
+import { CircleAlert, CircleDashed, Clock, Images, Loader2, Lock } from "lucide-react";
 import { RemoveEventButton } from "@/components/remove-event-button";
 import { SyncEventButton } from "@/components/sync-event-button";
 import { browseHref, coverSrc, formatBytes } from "@/lib/format";
@@ -18,6 +18,8 @@ type Props = {
   size: number | null;
   /** Search index status; missing when it couldn't be read. */
   sync?: SyncStatus;
+  /** Private event: only the admin and its chosen viewers see it. */
+  isPrivate?: boolean;
   /** Admin only. */
   canRemove?: boolean;
 };
@@ -25,7 +27,7 @@ type Props = {
 const REVEAL = "[@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-within:opacity-100";
 
 /** One event as a wide sheet: the cover photo leads, the title sits beside it in condensed type. */
-export function EventCard({ slug, title, rootId, coverId, itemCount, size, sync, canRemove = false }: Props) {
+export function EventCard({ slug, title, rootId, coverId, itemCount, size, sync, isPrivate = false, canRemove = false }: Props) {
   const [hasCover, setHasCover] = useState(!!rootId);
   const count = itemCount ?? 0;
   const needsAttention = sync?.state === "error" || sync?.state === "stale";
@@ -50,6 +52,11 @@ export function EventCard({ slug, title, rootId, coverId, itemCount, size, sync,
           )}
         </div>
         <div className="flex flex-col justify-end gap-2 p-5 md:p-8">
+          {isPrivate && (
+            <span className="self-start inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-xs text-subtle">
+              <Lock className="size-3.5" aria-hidden /> Private
+            </span>
+          )}
           <h2 className="display text-4xl md:text-5xl text-balance">{title}</h2>
           <p className="text-sm text-subtle">
             {count} {count === 1 ? "folder" : "folders"}

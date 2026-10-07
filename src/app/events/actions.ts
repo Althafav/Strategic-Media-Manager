@@ -4,7 +4,17 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, requireSession } from "@/lib/auth";
-import { createEvent, deleteEvent, getEvent, listEvents, renameEvent, reorderEvents, setCoordinator } from "@/lib/events";
+import {
+  createEvent,
+  deleteEvent,
+  getEvent,
+  getVisibleEvent,
+  listEvents,
+  renameEvent,
+  reorderEvents,
+  setCoordinator,
+  setEventPrivacy,
+} from "@/lib/events";
 import { isAllowedUser, normalizeEmail } from "@/lib/users";
 import { runDeltaSync, SyncBusyError } from "@/lib/sync/delta-sync";
 import { describeSyncError } from "@/lib/sync/status";
@@ -15,14 +25,17 @@ export async function addEvent(_prev: AddEventState, form: FormData): Promise<Ad
   const title = String(form.get("title") ?? "");
   const shareUrl = String(form.get("shareUrl") ?? "");
   const coordinator = normalizeEmail(String(form.get("coordinator") ?? ""));
+  const hidden = form.get("private") === "on";
+  const viewers = hidden ? cleanEmails(form.getAll("viewers").map(String)) : [];
   const values = { title, shareUrl, coordinator };
 
   const denied = await requireAdmin();
   if (denied) return { error: denied, values };
   if (!title.trim()) return { error: "Give the event a name.", values };
   if (coordinator && !(await isAllowedUser(coordinator))) return { error: "Pick an active user from the Users list.", values };
+  if (!(await allAllowed(viewers))) return { error: "Pick viewers from the active users in the Users list.", values };
 
-  const result = await createEvent({ title, shareUrl });
+  const result = await createEvent({ title, shareUrl, hidden, viewerEmails: viewers });
   if (!result.ok) return { error: result.error, values };
 
   // Index the new event for search in the background; the cron resumes it if this is cut short.
@@ -43,7 +56,7 @@ export type SyncEventState = { message?: string; error?: string };
 export async function syncEvent(_prev: SyncEventState, form: FormData): Promise<SyncEventState> {
   const denied = await requireSession();
   if (denied) return { error: denied };
-  const event = await getEvent(String(form.get("slug") ?? ""));
+  const event = await getVisibleEvent(String(form.get("slug") ?? ""));
   if (!event) return { error: "Event not found. It may have been removed." };
 
   try {
@@ -92,6 +105,28 @@ export async function setEventCoordinator(slug: string, email: string): Promise<
   return {};
 }
 
+/**
+ * Makes the event private (only the admin and `viewers` see it) or public again. Admin only; viewers must be active
+ * users. Share links already made for the event keep working.
+ */
+export async function setEventPrivacyAction(slug: string, hidden: boolean, viewers: string[]): Promise<{ error?: string }> {
+  const denied = await requireAdmin();
+  if (denied) return { error: denied };
+  const event = await getEvent(slug);
+  if (!event) return { error: "Event not found. It may have been removed." };
+  const emails = hidden ? cleanEmails(viewers) : [];
+  // Viewers already on the event may have left the Users list since; keeping them is harmless (see canSeeEvent).
+  const kept = new Set(event.viewer_emails ?? []);
+  if (!(await allAllowed(emails.filter((e) => !kept.has(e))))) return { error: "Pick viewers from the active users in the Users list." };
+  try {
+    await setEventPrivacy(event.id, hidden, emails);
+  } catch (e) {
+    return { error: (e as Error).message || "Could not change who can see the event." };
+  }
+  revalidatePath("/", "layout");
+  return {};
+}
+
 /** Renames the event (display name only; its URL doesn't change). Admin only. */
 export async function renameEventAction(slug: string, title: string): Promise<{ error?: string }> {
   const denied = await requireAdmin();
@@ -123,4 +158,13 @@ export async function reorderEventsAction(slugs: string[]): Promise<{ error?: st
   }
   revalidatePath("/", "layout");
   return {};
+}
+
+function cleanEmails(list: unknown): string[] {
+  if (!Array.isArray(list)) return [];
+  return [...new Set(list.filter((v): v is string => typeof v === "string").map(normalizeEmail).filter(Boolean))].slice(0, 500);
+}
+
+async function allAllowed(emails: string[]): Promise<boolean> {
+  return (await Promise.all(emails.map((e) => isAllowedUser(e)))).every(Boolean);
 }

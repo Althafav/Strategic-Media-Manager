@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Gallery } from "@/components/gallery";
 import { getSession } from "@/lib/auth";
 import { db, isIndexConfigured } from "@/lib/db";
-import { listEvents } from "@/lib/events";
+import { listVisibleEvents } from "@/lib/events";
 import { thumbSrc } from "@/lib/format";
 import type { LikeMap } from "@/lib/like-types";
 import { likedByOwner, likersOf, topLiked } from "@/lib/likes";
@@ -22,10 +22,11 @@ export default async function TopLikedPage({ searchParams }: PageProps<"/top">) 
   if (!isIndexConfigured()) return <Notice title="Likes aren't set up yet" body="Connect Supabase to enable likes." />;
 
   const raw = (await searchParams).e;
-  const events = await listEvents();
+  const events = await listVisibleEvents();
   const current = events.find((e) => e.slug === raw) ?? null;
 
-  const rows = await topLiked(current?.id, LIMIT).catch(() => null);
+  const privateIds = events.filter((e) => e.hidden).map((e) => e.id);
+  const rows = await topLiked(current?.id, LIMIT, privateIds).catch(() => null);
   if (!rows) {
     return <Notice title="Likes aren't set up yet" body="Run supabase/migrations/0010_photo_likes.sql in the Supabase SQL editor." />;
   }

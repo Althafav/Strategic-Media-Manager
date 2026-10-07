@@ -22,7 +22,7 @@ export default async function TopDownloadsPage({ searchParams }: PageProps<"/top
   if (!isIndexConfigured()) return <Notice title="Downloads aren't set up yet" body="Connect Supabase to count downloads." />;
 
   const raw = (await searchParams).e;
-  const events = await listEvents();
+  const events = await listEvents({ includeHidden: true });
   const current = events.find((e) => e.slug === raw) ?? null;
 
   const rows = await topDownloaded(current ? [current.id] : events.map((e) => e.id), LIMIT).catch(() => null);

@@ -69,8 +69,10 @@ export async function setLike(eventId: string, itemId: string, owner: string, li
 
 export type TopLiked = { event_id: string; item_id: string; likes: number };
 
-export async function topLiked(eventId?: string, limit = 100): Promise<TopLiked[]> {
-  const { data, error } = await db().rpc("top_liked", { ev: eventId ?? null, lim: limit });
+/** `visible`: ids of private events the viewer may see (others are skipped). Needs migration 0019 when non-empty. */
+export async function topLiked(eventId?: string, limit = 100, visible: string[] = []): Promise<TopLiked[]> {
+  const args = { ev: eventId ?? null, lim: limit, ...(visible.length ? { visible } : {}) };
+  const { data, error } = await db().rpc("top_liked", args);
   if (error) throw error;
   return (data as TopLiked[]).map((r) => ({ ...r, likes: Number(r.likes) }));
 }

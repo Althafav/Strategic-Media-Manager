@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { getSession } from "@/lib/auth";
 import { recordItemDownloads } from "@/lib/downloads";
-import { getEvent } from "@/lib/events";
+import { getVisibleEvent } from "@/lib/events";
 import { buildManifest, isValidId, NotFoundError, type ManifestEntry } from "@/lib/onedrive/client";
 import { canViewShare } from "@/lib/share-emails";
 import { getActiveShare, recordDownload, signItem, verifyItem } from "@/lib/shares";
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     if (!(await getSession())) return Response.json({ error: "Not logged in" }, { status: 401 });
     const counted: [eventId: string, ids: string[]][] = [];
     for (const [slug, group] of Map.groupBy(refs, (r) => r.event)) {
-      const event = await getEvent(slug);
+      const event = await getVisibleEvent(slug);
       if (!event) return Response.json({ error: `Unknown event ${slug}` }, { status: 404 });
       const start = files.length;
       await buildManifest(event.share_url, slug, group.map((r) => r.id), files);

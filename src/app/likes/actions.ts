@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
-import { getEvent } from "@/lib/events";
+import { getVisibleEvent } from "@/lib/events";
 import type { LikeState } from "@/lib/like-types";
 import { likersOf, setLike } from "@/lib/likes";
 import { isValidId } from "@/lib/onedrive/client";
@@ -13,7 +13,7 @@ export async function setLikeAction(eventSlug: string, itemId: string, like: boo
   const session = await getSession();
   if (!session) return { error: "Your session has expired. Log in again." };
   if (!isValidId(itemId)) return { error: "Invalid item." };
-  const event = await getEvent(eventSlug);
+  const event = await getVisibleEvent(eventSlug);
   if (!event) return { error: "Event not found." };
   try {
     const count = await setLike(event.id, itemId, shareOwner(session), like);

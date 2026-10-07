@@ -1,3 +1,4 @@
+import { getSession, type Session } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { inspectShare } from "@/lib/onedrive/client";
 import { isSupportedShareUrl } from "@/lib/onedrive/session";
@@ -16,6 +17,8 @@ export type EventRow = {
   created_at: string;
   /** Marketing coordinator for photo requests (migration 0011): an app_users email, at most one per event. */
   coordinator_email?: string | null;
+  /** Private events (`hidden`): app_users emails, besides the admin, who may see it (migration 0019). */
+  viewer_emails?: string[];
 };
 
 let cached: { at: number; rows: EventRow[] } | null = null;
@@ -38,10 +41,38 @@ export async function getEvent(slug: string): Promise<EventRow | null> {
   return (await listEvents({ includeHidden: true })).find((e) => e.slug === slug) ?? null;
 }
 
+/**
+ * Private events (`hidden`) are seen by the admin and the listed viewers only. A viewer removed from app_users stays
+ * in `viewer_emails`: their session is rejected anyway, and adding them back restores their access.
+ * Share links are not filtered here: an existing link to a private event keeps working.
+ */
+export function canSeeEvent(event: EventRow, session: Session | null): boolean {
+  if (!session) return false;
+  if (!event.hidden || session.role === "admin") return true;
+  return !!session.email && (event.viewer_emails ?? []).includes(session.email.toLowerCase());
+}
+
+/** Events the logged-in viewer may see, private ones included when allowed. Use for team-facing pages. */
+export async function listVisibleEvents(): Promise<EventRow[]> {
+  const session = await getSession();
+  return (await listEvents({ includeHidden: true })).filter((e) => canSeeEvent(e, session));
+}
+
+/** Like getEvent, but null when the logged-in viewer may not see the event. Use for team-facing reads by slug. */
+export async function getVisibleEvent(slug: string): Promise<EventRow | null> {
+  const event = await getEvent(slug);
+  return event && canSeeEvent(event, await getSession()) ? event : null;
+}
+
 export type CreateEventResult = { ok: true; event: EventRow } | { ok: false; error: string };
 
-/** Validates the share link by actually opening it, then stores the event. */
-export async function createEvent(input: { title: string; shareUrl: string }): Promise<CreateEventResult> {
+/** Validates the share link by actually opening it, then stores the event (optionally private, see canSeeEvent). */
+export async function createEvent(input: {
+  title: string;
+  shareUrl: string;
+  hidden?: boolean;
+  viewerEmails?: string[];
+}): Promise<CreateEventResult> {
   const title = input.title.trim().slice(0, 120);
   const shareUrl = normalizeShareUrl(input.shareUrl);
   if (!shareUrl || !isSupportedShareUrl(shareUrl)) {
@@ -74,10 +105,11 @@ export async function createEvent(input: { title: string; shareUrl: string }): P
       root_name: facts.rootName,
       item_count: facts.itemCount,
       size: facts.size,
+      ...(input.hidden ? { hidden: true, viewer_emails: input.viewerEmails ?? [] } : {}),
     })
     .select("*")
     .single();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: /viewer_emails/.test(error.message) ? MIGRATION_0019 : error.message };
   await db().from("event_sync").insert({ event_id: data.id });
   cached = null;
   return { ok: true, event: data as EventRow };
@@ -122,6 +154,18 @@ export async function setCoordinator(eventId: string, email: string | null): Pro
     }
     throw error;
   }
+}
+
+const MIGRATION_0019 = "Run supabase/migrations/0019_private_events.sql in the Supabase SQL editor first.";
+
+/** Admin only (checked by the caller). Private: only the admin and `viewerEmails` see the event. Public clears the list. */
+export async function setEventPrivacy(eventId: string, hidden: boolean, viewerEmails: string[]): Promise<void> {
+  const { error } = await db()
+    .from("events")
+    .update({ hidden, viewer_emails: hidden ? viewerEmails : [] })
+    .eq("id", eventId);
+  cached = null;
+  if (error) throw /viewer_emails/.test(error.message) ? new Error(MIGRATION_0019) : error;
 }
 
 /** Drops tracking query params (xsdata, sdata, ovuser…) that personalise the link. */

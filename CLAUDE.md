@@ -135,6 +135,13 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
      list and revoke only their own links (`ownerFilter`); the admin sees and revokes all, with "Added by".
      Null = made before tracking.
 4. `next` redirect targets must be same-site relative paths (`safeNext` in `lib/auth.ts`).
+5. **Private events** (migration 0019): `events.hidden = true` means only the admin and the emails in
+   `events.viewer_emails` see the event (`canSeeEvent` in `lib/events.ts`). Team-facing reads must use
+   `listVisibleEvents()` / `getVisibleEvent(slug)`, never `listEvents()` / `getEvent()`. That covers home, the event page,
+   `resolveItemAccess`, the session branch of `/api/manifest`, search, most liked, and the like / request / sync actions.
+   `search_nodes` and `top_liked` take `visible uuid[]`, the private events the viewer may see, passed only when non-empty.
+   Share links ignore privacy: existing links keep working, but only the admin can create a new one (`createShare`).
+   The admin sets privacy on /events/new and /settings (`setEventPrivacyAction`).
 
 ## Conventions
 
@@ -176,7 +183,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` → `0019_private_events` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)

@@ -1,7 +1,7 @@
 import { Gallery } from "@/components/gallery";
 import { isAdmin } from "@/lib/auth";
 import { db, isIndexConfigured } from "@/lib/db";
-import { listEvents } from "@/lib/events";
+import { listVisibleEvents } from "@/lib/events";
 import { nodeToItem, type NodeRow } from "@/lib/nodes";
 
 export const dynamic = "force-dynamic";
@@ -20,9 +20,12 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   }
   if (q.length < 2) return <Notice title="Search" body="Type at least two characters." />;
 
-  const { data, error } = await db().rpc("search_nodes", { q, lim: 300 });
+  const events = await listVisibleEvents();
+  // Private events the viewer may see. Passed only when there are some, so search works before migration 0019.
+  const visible = events.filter((e) => e.hidden).map((e) => e.id);
+  const { data, error } = await db().rpc("search_nodes", { q, lim: 300, ...(visible.length ? { visible } : {}) });
   if (error) throw error;
-  const slugs = new Map((await listEvents()).map((e) => [e.id, e.slug]));
+  const slugs = new Map(events.map((e) => [e.id, e.slug]));
   const items = (data as NodeRow[]).filter((r) => slugs.has(r.event_id)).map((r) => nodeToItem(r, slugs.get(r.event_id)!));
 
   return (

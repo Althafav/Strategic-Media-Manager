@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
-import { getEvent } from "@/lib/events";
+import { getVisibleEvent } from "@/lib/events";
 import { isRequestStatus, type RequestItem } from "@/lib/request-types";
 import { createRequest, deleteRequest, INBOX_SEEN_COOKIE, markRequestSeen, markSentSeen, updateRequest } from "@/lib/requests";
 
@@ -16,7 +16,7 @@ export async function createRequestAction(_prev: CreateRequestState, form: FormD
   const values = { message };
   const session = await getSession();
   if (!session) return { error: EXPIRED, values };
-  const event = await getEvent(String(form.get("event") ?? ""));
+  const event = await getVisibleEvent(String(form.get("event") ?? ""));
   if (!event) return { error: "Event not found. It may have been removed.", values };
 
   const result = await createRequest(session, {

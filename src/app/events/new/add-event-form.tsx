@@ -1,15 +1,19 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { EventPrivacyFields } from "@/components/event-privacy-fields";
 import { addEvent, type AddEventState } from "../actions";
 
 const input =
   "w-full h-10 rounded-md bg-surface border border-border px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/25";
 
-/** `users`: active team members the admin can pick as the marketing coordinator. */
+/** `users`: active team members the admin can pick as the marketing coordinator or as viewers of a private event. */
 export function AddEventForm({ users }: { users: { email: string; label: string }[] }) {
   const [state, action, pending] = useActionState<AddEventState, FormData>(addEvent, {});
+  // Controlled, so a failed submit keeps the choice.
+  const [isPrivate, setPrivate] = useState(false);
+  const [viewers, setViewers] = useState<string[]>([]);
 
   return (
     <form action={action} className="space-y-5">
@@ -57,6 +61,16 @@ export function AddEventForm({ users }: { users: { email: string; label: string 
           Receives this event&apos;s photo requests. You can change it later in Settings.
         </span>
       </label>
+
+      <EventPrivacyFields
+        named
+        users={users}
+        isPrivate={isPrivate}
+        viewers={viewers}
+        onPrivateChange={setPrivate}
+        onViewersChange={setViewers}
+        disabled={pending}
+      />
 
       {state.error && (
         <p role="alert" className="text-sm rounded-md border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 px-3 py-2">

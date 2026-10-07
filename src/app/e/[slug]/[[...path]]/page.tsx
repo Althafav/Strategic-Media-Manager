@@ -3,7 +3,7 @@ import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Gallery } from "@/components/gallery";
 import { getSession } from "@/lib/auth";
 import { ShareFolderButton } from "@/components/share-folder-button";
-import { getEvent } from "@/lib/events";
+import { getVisibleEvent } from "@/lib/events";
 import { browseHref, cleanName, withPreviews } from "@/lib/format";
 import { getFolder, NotFoundError } from "@/lib/onedrive/client";
 import { getEventCovers } from "@/lib/covers";
@@ -24,14 +24,14 @@ function decode(seg: string) {
 
 export async function generateMetadata({ params }: PageProps<"/e/[slug]/[[...path]]">) {
   const { slug, path = [] } = await params;
-  const event = await getEvent(decode(slug));
+  const event = await getVisibleEvent(decode(slug));
   const name = path.length ? cleanName(decode(path.at(-1)!)) : event?.title;
   return { title: `${name ?? "Event"} · Strategic Media Manager` };
 }
 
 export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[[...path]]">) {
   const { slug: rawSlug, path: rawPath = [] } = await params;
-  const event = await getEvent(decode(rawSlug));
+  const event = await getVisibleEvent(decode(rawSlug));
   if (!event) notFound();
   const path = rawPath.map(decode);
 
