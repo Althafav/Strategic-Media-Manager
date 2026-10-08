@@ -1,9 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Suspense } from "react";
 import { getSession } from "@/lib/auth";
+import { listVisibleEvents } from "@/lib/events";
 import { inboxSeenAt, pendingCountFor, unseenAnswersFor } from "@/lib/requests";
 import { isPending, listUsers, normalizeEmail } from "@/lib/users";
+import { SearchBox } from "./search-box";
 import { UserMenu } from "./user-menu";
 
 export async function Header() {
@@ -19,6 +21,8 @@ export async function Header() {
         unseenAnswersFor(session).catch(() => 0),
       ])
     : [0, 0];
+  // Events offered in the search filter: only those this viewer may see.
+  const events = session ? await listVisibleEvents().catch(() => []) : [];
   // The user's name from app_users, else "john.doe@x.com" -> "John Doe". The password login is "Admin".
   const displayName = !session
     ? ""
@@ -50,16 +54,9 @@ export async function Header() {
         )}
         {session && (
           <>
-            <form action="/search" className="flex-1 max-w-xl ml-auto relative">
-              <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-subtle" aria-hidden />
-              <input
-                name="q"
-                type="search"
-                placeholder="Search by file or folder name"
-                aria-label="Search files and folders"
-                className="w-full h-9 rounded-md bg-background border border-transparent focus:border-foreground focus:bg-surface pl-9 pr-3 text-sm outline-none placeholder:text-subtle"
-              />
-            </form>
+            <Suspense fallback={<div className="flex-1 max-w-xl ml-auto h-9" />}>
+              <SearchBox events={events.map((e) => ({ slug: e.slug, title: e.title }))} />
+            </Suspense>
             <UserMenu
               name={displayName}
               email={session.email}

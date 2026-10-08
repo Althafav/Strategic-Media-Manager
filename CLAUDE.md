@@ -65,7 +65,7 @@ src/app/users                   admin-only: add/remove SSO users, approve/reject
 src/app/requests                photo requests: Inbox tab (event's coordinator; admin sees all) / Sent tab (own requests), /requests/[id] shows the picked photos in the Gallery
 src/lib/requests.ts             photo_requests queries + canHandle (server-only); client-safe types/labels in request-types.ts
 src/app/settings                admin-only: reorder events (event-order-list.tsx: drag or arrows, saves `events.sort` via `reorderEventsAction`), rename events, pick each event's cover (event-cover-picker.tsx: browse any folder, stored as the root folder's folder_covers row), set each event's marketing coordinator
-src/app/search                  index search (Supabase `search_nodes` RPC)
+src/app/search                  index search (Supabase `search_nodes` RPC); event filter `?e=` repeated for several events, set from the checkbox popover in the header search bar (`components/search-box.tsx`)
 src/app/top                     most liked photos (`top_liked` RPC, event filter `?e=`); likes live in `photo_likes` via `lib/likes.ts` + `app/likes/actions.ts`
 src/app/top-downloads           admin-only: most downloaded files (`topDownloaded`, event filter `?e=`), linked from the user menu for the admin only
 src/app/api/{download,thumb,cover}/[id], api/manifest   media APIs (302s to OneDrive / JSON)
@@ -140,7 +140,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
    `events.viewer_emails` see the event (`canSeeEvent` in `lib/events.ts`). Team-facing reads must use
    `listVisibleEvents()` / `getVisibleEvent(slug)`, never `listEvents()` / `getEvent()`. That covers home, the event page,
    `resolveItemAccess`, the session branch of `/api/manifest`, search, most liked, and the like / request / sync actions.
-   `search_nodes` and `top_liked` take `visible uuid[]`, the private events the viewer may see, passed only when non-empty.
+   `search_nodes` and `top_liked` take `visible uuid[]`, the private events the viewer may see, passed only when non-empty. `search_nodes` also takes `evs uuid[]` (0020, the search event filter; the page falls back to one call per event before 0020).
    Share links ignore privacy: existing links keep working, but only the admin can create a new one (`createShare`).
    The admin sets privacy on /events/new and /settings (`setEventPrivacyAction`).
 
@@ -184,7 +184,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` → `0019_private_events` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` → `0019_private_events` → `0020_search_events` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
