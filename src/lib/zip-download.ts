@@ -1,7 +1,8 @@
 import { downloadZip, predictLength } from "client-zip";
 import type { ManifestEntry } from "@/lib/onedrive/client";
-import { downloadHref, type Ref } from "@/lib/format";
-import { compressBitmap, decode, isImagePath, outputName, type CompressOptions } from "@/lib/image-compress";
+import { downloadHref, thumbSrc, ZOOM_PX, type Ref } from "@/lib/format";
+import { BusyError, BUSY_MESSAGE, fetchRetry } from "@/lib/fetch-retry";
+import { compressBitmap, decode, isImagePath, outputName, previewSuffices, type CompressOptions } from "@/lib/image-compress";
 
 /**
  * `bytes`/`totalBytes` are zip bytes. When compressing, output sizes aren't known up front, so progress is
@@ -65,16 +66,14 @@ export async function downloadAsZip(
   async function* entries() {
     for (const f of files) {
       signal?.throwIfAborted();
-      const res = await fetchWithRefresh(f, signal);
       if (!compress) {
+        const res = await withName(f, fetchFile(f, (r) => Promise.resolve(r), signal));
         done++;
         yield { name: f.path, input: res, size: f.size };
         continue;
       }
       // One photo at a time keeps memory bounded: decode, re-encode, release the bitmap.
-      const bitmap = await decode(await res.blob()).catch(() => {
-        throw new Error(`This browser can't read ${f.path.split("/").pop()}`);
-      });
+      const bitmap = await withName(f, loadBitmap(f, previewSuffices(compress), signal));
       try {
         const input = await compressBitmap(bitmap, compress);
         done++;
@@ -113,19 +112,50 @@ export async function downloadAsZip(
   onProgress({ phase: "done", files: files.length, bytes, totalBytes, ...extra });
 }
 
-async function fetchWithRefresh(f: ManifestEntry, signal?: AbortSignal): Promise<Response> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(f.url, { signal });
-    if (res.ok) return res;
-    if (res.status === 401 || res.status === 403) {
-      // Pre-authenticated URL expired during a long download: get a new one.
-      const fresh = await fetch(`${downloadHref(f)}&json=1`, { signal }).then((r) => r.json());
-      f.url = fresh.url;
-    } else {
-      await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+/** Errors name the file, so a failed zip says which photo stopped it. */
+function withName<T>(f: ManifestEntry, p: Promise<T>): Promise<T> {
+  return p.catch((e: Error) => {
+    if (e instanceof BusyError) throw new BusyError(`${BUSY_MESSAGE} (${fileName(f)} didn't download.)`);
+    throw e;
+  });
+}
+
+const fileName = (f: ManifestEntry) => f.path.split("/").pop();
+
+/**
+ * The file's bytes from OneDrive, retried when it's busy or the connection drops. The manifest URL is used first;
+ * retries ask for a fresh one, since an expired or throttled URL won't recover on its own.
+ */
+function fetchFile<T>(f: ManifestEntry, read: (res: Response) => Promise<T>, signal?: AbortSignal): Promise<T> {
+  let first = true;
+  const url = async () => {
+    if (first) {
+      first = false;
+      return f.url;
     }
+    const fresh = await fetch(`${downloadHref(f)}&json=1`, { signal, cache: "no-store" }).then((r) => r.json());
+    if (fresh.url) f.url = fresh.url;
+    return f.url;
+  };
+  return fetchRetry(url, (res) => (res.ok ? read(res) : Promise.reject(new Error(`Could not download ${fileName(f)}`))), signal);
+}
+
+/** The photo to compress: its 3840px preview when that's big enough, else (or when there's no preview) the original. */
+async function loadBitmap(f: ManifestEntry, usePreview: boolean, signal?: AbortSignal): Promise<ImageBitmap> {
+  if (usePreview) {
+    const preview = await fetchRetry(() => thumbSrc(f, ZOOM_PX), (r) => (r.ok ? r.blob() : Promise.resolve(null)), signal).catch(
+      (e) => {
+        if (signal?.aborted) throw e;
+        return null;
+      },
+    );
+    const bitmap = preview && (await decode(preview).catch(() => null));
+    if (bitmap) return bitmap;
   }
-  throw new Error(`Failed to fetch ${f.path}`);
+  const blob = await fetchFile(f, (r) => r.blob(), signal);
+  return decode(blob).catch(() => {
+    throw new Error(`This browser can't read ${fileName(f)}`);
+  });
 }
 
 function dedupePaths(files: ManifestEntry[]): ManifestEntry[] {

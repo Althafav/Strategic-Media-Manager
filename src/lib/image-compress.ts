@@ -1,5 +1,6 @@
 import type { MediaItem } from "@/lib/onedrive/types";
-import { downloadHref, resizedPreview, ZOOM_PX } from "@/lib/format";
+import { resizedPreview, streamHref, ZOOM_PX } from "@/lib/format";
+import { fetchRetry } from "@/lib/fetch-retry";
 
 /**
  * Browser-side image compression: decode with createImageBitmap, redraw on a canvas at the target size and
@@ -75,24 +76,52 @@ function draw(
   ctx.drawImage(bitmap, 0, 0, width, height);
 }
 
+/**
+ * True when the 3840px preview is big enough for `opts`, so the full original (often 15–20 MB) needn't be
+ * downloaded. The preview is also served by a different OneDrive host, which keeps working while an
+ * original is throttled.
+ */
+export const previewSuffices = (opts: CompressOptions) => !opts.width && !!opts.maxSide && opts.maxSide <= ZOOM_PX;
+
+/** `bytes` is always the original's size; `fromPreview` means the original's format couldn't be decoded. */
 export type Source = { bitmap: ImageBitmap; bytes: number; fromPreview: boolean };
 
+const readBlob = (res: Response, error: string) => (res.ok ? res.blob() : Promise.reject(new Error(error)));
+
+/** The 3840px preview, or null when the item has none. */
+async function fetchPreview(preview: string | undefined, signal?: AbortSignal): Promise<Blob | null> {
+  const url = preview && (resizedPreview(preview, ZOOM_PX) ?? preview);
+  if (!url) return null;
+  return fetchRetry(() => url, (res) => (res.ok ? res.blob() : Promise.resolve(null)), signal);
+}
+
 /**
- * The original from OneDrive, or the 3840px preview when the browser can't decode the original
- * (HEIC, TIFF, RAW…). Fetching `downloadHref` counts as a download on share links, as intended.
+ * Decoded pixels to compress. With `usePreview` (see `previewSuffices`) that's the 3840px preview, falling back
+ * to the original when there's none; otherwise the original, falling back to the preview when the browser can't
+ * decode it (HEIC, TIFF, RAW…). The original is fetched via `streamHref`, so opening the dialog isn't a
+ * download; saving the copy is counted separately (`countHref`).
  */
-export async function loadSource(item: MediaItem, signal?: AbortSignal): Promise<Source> {
-  const res = await fetch(downloadHref(item), { signal });
-  if (!res.ok) throw new Error("Could not download the original from OneDrive");
-  const blob = await res.blob();
+export async function loadSource(item: MediaItem, usePreview: boolean, signal?: AbortSignal): Promise<Source> {
+  if (usePreview) {
+    // Any failure here just means trying the original instead.
+    const blob = await fetchPreview(item.preview, signal).catch((e) => {
+      if (signal?.aborted) throw e;
+      return null;
+    });
+    const bitmap = blob && (await decode(blob).catch(() => null));
+    if (bitmap) return { bitmap, bytes: item.size, fromPreview: false };
+  }
+  const blob = await fetchRetry(
+    () => streamHref(item),
+    (res) => readBlob(res, "Could not download the original from OneDrive"),
+    signal,
+  );
   try {
     return { bitmap: await decode(blob), bytes: blob.size, fromPreview: false };
   } catch {
-    const preview = item.preview && (resizedPreview(item.preview, ZOOM_PX) ?? item.preview);
-    if (!preview) throw new Error("This browser can't read this image format");
-    const fallback = await fetch(preview, { signal });
-    if (!fallback.ok) throw new Error("This browser can't read this image format");
-    return { bitmap: await decode(await fallback.blob()), bytes: blob.size, fromPreview: true };
+    const fallback = await fetchPreview(item.preview, signal);
+    if (!fallback) throw new Error("This browser can't read this image format");
+    return { bitmap: await decode(fallback), bytes: blob.size, fromPreview: true };
   }
 }
 

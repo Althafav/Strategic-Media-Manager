@@ -40,8 +40,10 @@ const refQuery = (r: Ref) => `e=${encodeURIComponent(r.event)}${r.t ? `&t=${r.t}
 
 export const itemKey = (r: Ref) => `${r.event}/${r.id}`;
 export const downloadHref = (r: Ref) => `/api/download/${r.id}?${refQuery(r)}`;
-/** Same file for in-page playback (video src): not counted as a share-link download. */
+/** Same file for in-page use (video src, the compress dialog's source): not counted as a download. */
 export const streamHref = (r: Ref) => `${downloadHref(r)}&stream=1`;
+/** Records one download of the file without fetching it (the compress dialog's Download button). Returns 204. */
+export const countHref = (r: Ref) => `${downloadHref(r)}&count=1`;
 /** `v` changes when picked covers change, so the browser doesn't reuse its cached redirect to the old one. */
 export const coverSrc = (r: Ref, v?: string) => `/api/cover/${r.id}?${refQuery(r)}${v ? `&v=${v}` : ""}`;
 export const thumbSrc = (r: Ref, size: number) => `/api/thumb/${r.id}?${refQuery(r)}&s=${size}`;

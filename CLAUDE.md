@@ -125,7 +125,8 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
    - Views are counted once per browser session via a session cookie scoped to `/s/<token>`.
    - Downloads are counted per click (`recordDownload`, migration 0006): `/api/download` redirects with `t`, and
      `/api/manifest` with `t` (one zip, plus its file count). Not counted: `?json=1` URL refreshes, and `?stream=1`
-     (`streamHref`, the lightbox video player). Keep new playback uses on `streamHref`.
+     (`streamHref`: the lightbox video player and the compress dialog's source fetch). Keep new in-page uses on
+     `streamHref`. The single-photo compress dialog counts on its Download click via `?count=1` (`countHref`, 204, no fetch).
    - Per-file counts (migration 0015, `lib/downloads.ts`): the same two routes also add 1 per file to
      `item_downloads` for team **and** share requests (a zip adds 1 to every file in it; same exclusions).
      Shown as a badge on team event pages only (`downloads` prop on `Gallery`), never on share pages.

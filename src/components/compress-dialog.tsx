@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, Link as LinkIcon, Loader2, Shrink, Unlink } from "lucide-react";
 import type { MediaItem } from "@/lib/onedrive/types";
-import { cleanName, formatBytes } from "@/lib/format";
+import { cleanName, countHref, formatBytes } from "@/lib/format";
 import {
   compressBitmap,
   FORMATS,
   loadSource,
   outputName,
+  previewSuffices,
   saveBlob,
   targetSize,
   type CompressFormat,
@@ -191,36 +192,43 @@ const clampPx = (n: number) => Math.min(MAX_PX, Math.max(1, Math.round(n) || 1))
 
 function SinglePanel({ item }: { item: MediaItem }) {
   const [settings, update] = useSettings();
-  const [source, setSource] = useState<Source | null>(null);
+  const [loaded, setLoaded] = useState<{ source: Source; full: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [custom, setCustom] = useState<{ w: number; h: number } | null>(null);
+  const opts = toOptions(settings, custom ?? undefined);
+  const optsKey = JSON.stringify(opts);
+  // The 3840px preview is enough until a setting needs the original; once switched, the original is kept.
+  const [full, setFull] = useState(() => !previewSuffices(opts));
+  if (!full && !previewSuffices(opts)) setFull(true);
+  const source = loaded?.full === full ? loaded.source : null;
   const [lock, setLock] = useState(true);
   // `key` is the settings the result was encoded with: while it differs from the current ones, a new encode is pending.
   const [result, setResult] = useState<{ blob: Blob; url: string; width: number; height: number; key: string } | null>(null);
   const resultUrl = useRef<string | null>(null);
 
-  // Fetch and decode the original once per open; release the bitmap when the dialog closes.
+  // Fetch and decode the source once per open (and again if the original becomes needed); release the bitmap after.
   useEffect(() => {
     const ctrl = new AbortController();
-    let loaded: Source | null = null;
-    loadSource(item, ctrl.signal)
+    let bitmap: ImageBitmap | null = null;
+    loadSource(item, !full, ctrl.signal)
       .then((s) => {
-        loaded = s;
-        setSource(s);
-        setCustom({ w: s.bitmap.width, h: s.bitmap.height });
+        bitmap = s.bitmap;
+        setLoaded({ source: s, full });
+        setError(null);
+        // Custom sizes start from the original's dimensions (only set from the preview when they're unknown).
+        const known = !full && item.width && item.height ? { w: item.width, h: item.height } : null;
+        setCustom(known ?? { w: s.bitmap.width, h: s.bitmap.height });
       })
       .catch((e: Error) => {
         if (e.name !== "AbortError") setError(e.message);
       });
     return () => {
       ctrl.abort();
-      loaded?.bitmap.close();
+      bitmap?.close();
     };
-  }, [item]);
+  }, [item, full]);
 
   // Re-encode shortly after the settings stop changing.
-  const opts = toOptions(settings, custom ?? undefined);
-  const optsKey = JSON.stringify(opts);
   useEffect(() => {
     if (!source) return;
     let cancelled = false;
@@ -257,6 +265,12 @@ function SinglePanel({ item }: { item: MediaItem }) {
     source && setCustom((c) => ({ h: clampPx(h), w: lock ? clampPx((h * source.bitmap.width) / source.bitmap.height) : (c?.w ?? 1) }));
 
   const encoding = !!source && !error && result?.key !== optsKey;
+  // From the preview, the bitmap is smaller than the original: show the original's size when it's known.
+  const originalDims =
+    !source ? null
+    : full || source.fromPreview ? { w: source.bitmap.width, h: source.bitmap.height }
+    : item.width && item.height ? { w: item.width, h: item.height }
+    : null;
   const change = result && source ? Math.round((result.blob.size / source.bytes - 1) * 100) : null;
 
   return (
@@ -297,7 +311,7 @@ function SinglePanel({ item }: { item: MediaItem }) {
           <p className="text-sm text-red-700">{error}</p>
         ) : !source ? (
           <p className="text-sm text-subtle inline-flex items-center gap-2">
-            <Loader2 className="size-4 animate-spin" /> Downloading the original…
+            <Loader2 className="size-4 animate-spin" /> {full ? "Downloading the original…" : "Loading the photo…"}
           </p>
         ) : (
           <>
@@ -310,7 +324,8 @@ function SinglePanel({ item }: { item: MediaItem }) {
             <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 flex-1 min-w-0">
               <dt className="text-subtle">Original</dt>
               <dd className="tabular-nums">
-                {formatBytes(source.bytes)}, {source.bitmap.width} × {source.bitmap.height}
+                {formatBytes(source.bytes)}
+                {originalDims && `, ${originalDims.w} × ${originalDims.h}`}
               </dd>
               <dt className="text-subtle">Compressed</dt>
               <dd className="tabular-nums inline-flex items-center gap-2">
@@ -338,7 +353,11 @@ function SinglePanel({ item }: { item: MediaItem }) {
       <button
         type="button"
         disabled={!result || encoding}
-        onClick={() => result && saveBlob(result.blob, outputName(cleanName(item.name), settings.format))}
+        onClick={() => {
+          if (!result) return;
+          saveBlob(result.blob, outputName(cleanName(item.name), settings.format));
+          fetch(countHref(item), { keepalive: true }).catch(() => {});
+        }}
         className="h-10 rounded-md bg-accent text-accent-foreground text-sm font-medium inline-flex items-center justify-center gap-2 disabled:opacity-50"
       >
         <Download className="size-4" /> Download {FORMATS.find((f) => f.value === settings.format)!.label}
