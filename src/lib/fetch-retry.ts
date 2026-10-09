@@ -35,17 +35,19 @@ function wait(ms: number, signal?: AbortSignal) {
 /**
  * Fetches `url()` and runs `read` on the response, retrying when OneDrive is busy, the connection drops
  * (also mid-body, inside `read`), or the URL has expired (401/403). `url` is called again before every retry,
- * so it can return a fresh pre-authenticated URL. Other bad statuses are returned to `read` as-is.
+ * so it can return a fresh pre-authenticated URL. Other bad statuses are returned to `read` as-is. `init` adds
+ * request headers (e.g. `Range`).
  * Throws BusyError when every attempt failed.
  */
 export async function fetchRetry<T>(
   url: () => string | Promise<string>,
   read: (res: Response) => Promise<T>,
   signal?: AbortSignal,
+  init?: { headers?: HeadersInit },
 ): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await fetch(await url(), { signal, cache: "no-store" });
+      const res = await fetch(await url(), { ...init, signal, cache: "no-store" });
       // 401/403 from OneDrive is an expired URL; from our own API it's a real "no access".
       const expired = (res.status === 401 || res.status === 403) && new URL(res.url).origin !== location.origin;
       if (!isBusyStatus(res.status) && !expired) return await read(res);

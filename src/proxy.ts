@@ -7,7 +7,7 @@ import { recordView } from "@/lib/shares";
 // /api/auth/sso and /sso-login are the Microsoft SSO start and callback (lib/sso.ts).
 const PUBLIC_PATHS = ["/login", "/api/sync", "/s", "/api/auth/sso", "/sso-login"];
 // Media APIs called from share pages carry ?t=<token>&sig=…, verified in the route (lib/access.ts).
-const SHARE_APIS = ["/api/thumb/", "/api/cover/", "/api/download/", "/api/manifest"];
+const SHARE_APIS = ["/api/thumb/", "/api/cover/", "/api/download/", "/api/video/", "/api/manifest"];
 
 // Session cookie scoped to /s/<token>: a share link's views count once per browser session, not per refresh.
 const VIEWED_COOKIE = "smm_viewed";

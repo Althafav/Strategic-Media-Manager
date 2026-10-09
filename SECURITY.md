@@ -48,6 +48,11 @@ the authoritative per-layer rules.
 
 ## Accepted trade-offs
 
+- **Video streams are direct OneDrive URLs too.** `/api/video` re-checks `t`/`sig` and 302s to OneDrive's
+  live-transcode manifest (`mediap.svc.ms`, used when a computer can't decode an original video). Its
+  manifest and segment URLs carry the tempauth from that item's thumbnail URL, which opens **only that
+  item** (verified: it is rejected for any other file), and they expire with it (~5 h).
+
 - **Download and zip URLs are direct OneDrive URLs.** `/api/download` re-checks `t`/`sig` and counts
   the download (per link and per file) on each click before it 302s to `@content.downloadUrl`; `/api/manifest` returns those
   URLs for client-side zipping (`client-zip` must fetch bytes straight from OneDrive via CORS).

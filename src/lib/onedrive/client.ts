@@ -1,3 +1,4 @@
+import { isMxfName } from "@/lib/format";
 import { getSession, invalidateSession } from "./session";
 import type { MediaItem } from "./types";
 
@@ -13,7 +14,7 @@ export type DriveItem = {
   file?: { mimeType?: string };
   image?: { width?: number; height?: number };
   photo?: { takenDateTime?: string; cameraMake?: string; cameraModel?: string };
-  video?: { width?: number; height?: number; duration?: number };
+  video?: { width?: number; height?: number; duration?: number; fourCC?: string };
   thumbnails?: { medium?: { url: string }; large?: { url: string } }[];
   "@content.downloadUrl"?: string;
 };
@@ -186,6 +187,35 @@ export async function getThumbUrl(share: string, id: string, px: number): Promis
   });
 }
 
+/**
+ * OneDrive's live transcode of a video (DASH, H.264 up to 1080p, CORS *), as OneDrive's own player uses it.
+ * Built from the item's thumbnail URL: its `docid` carries a tempauth that opens only this item, so the
+ * manifest and segment URLs handed to the browser can't read anything else in the event. Null when the
+ * item has no thumbnail (OneDrive hasn't processed it, e.g. MXF).
+ */
+export async function getVideoStreamUrl(share: string, id: string): Promise<string | null> {
+  return memo(share, `stream:${id}`, async () => {
+    const [item, page] = await Promise.all([
+      drive<DriveItem>(share, `/items/${id}?$select=id,name,file,video`),
+      drive<{ value: NonNullable<DriveItem["thumbnails"]> }>(share, `/items/${id}/thumbnails`),
+    ]);
+    if (!item.file) throw new NotFoundError(id);
+    const raw = page.value[0]?.large?.url ?? page.value[0]?.medium?.url;
+    if (!raw) return null;
+    const thumb = new URL(raw);
+    const url = new URL("/transform/videomanifest", thumb.origin);
+    for (const key of ["provider", "farmid", "cs", "docid"]) {
+      const value = thumb.searchParams.get(key);
+      if (value) url.searchParams.set(key, value);
+    }
+    const ext = item.name.split(".").pop()?.toLowerCase() || "mp4";
+    for (const [key, value] of Object.entries({ inputFormat: ext, action: "Access", part: "index", format: "dash", useScf: "True", pretranscode: "0", transcodeahead: "0" })) {
+      url.searchParams.set(key, value);
+    }
+    return url.toString();
+  });
+}
+
 export async function getDownloadUrl(share: string, id: string): Promise<string> {
   const item = await drive<DriveItem>(share, `/items/${id}?$select=id,name,file,@content.downloadUrl`);
   const url = item["@content.downloadUrl"];
@@ -279,7 +309,7 @@ function sizedThumb(t: NonNullable<DriveItem["thumbnails"]>[number], px: number)
 function toMediaItem(i: DriveItem): Omit<MediaItem, "event"> {
   const mime = i.file?.mimeType;
   const thumb = i.thumbnails?.[0];
-  const isVideo = !!i.video || !!mime?.startsWith("video/");
+  const isVideo = !!i.video || !!mime?.startsWith("video/") || isMxfName(i.name);
   return {
     id: i.id,
     name: i.name,
@@ -293,10 +323,11 @@ function toMediaItem(i: DriveItem): Omit<MediaItem, "event"> {
     height: i.image?.height ?? i.video?.height,
     takenAt: i.photo?.takenDateTime,
     camera: cameraName(i) ?? undefined,
+    videoCodec: i.video?.fourCC,
     modifiedAt: i.lastModifiedDateTime,
     // The raw drive thumbnail URL is never emitted to the browser: callers build /api/thumb URLs
     // with withPreviews() so every image load re-checks the share token. See SECURITY.md.
-    hasThumb: !!thumb || !!i.image || isVideo,
+    hasThumb: !!thumb || !!i.image || (isVideo && !isMxfName(i.name)),
   };
 }
 

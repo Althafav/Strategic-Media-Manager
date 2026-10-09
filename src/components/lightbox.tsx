@@ -20,9 +20,11 @@ import {
   X,
 } from "lucide-react";
 import type { MediaItem } from "@/lib/onedrive/types";
-import { browseHref, cleanName, downloadHref, formatBytes, resizedPreview, streamHref } from "@/lib/format";
+import { browseHref, cleanName, downloadHref, formatBytes, isMxfName, resizedPreview } from "@/lib/format";
 import type { LikeState } from "@/lib/like-types";
 import { CompressButton } from "./compress-dialog";
+import { MxfPlayer } from "./mxf-player";
+import { VideoPlayer } from "./video-player";
 import { ShareItemsButton } from "./share-items-button";
 
 /** Team pages pass where "Share" links are created from; share-link visitors can't share. */
@@ -368,20 +370,8 @@ function Media({ item, zoomRef, onZoomed, onSwipe, onClose, onEnded }: MediaProp
   const [state, setState] = useState<"loading" | "loaded" | "error">("loading");
   const [attempt, setAttempt] = useState(0);
   const center = "absolute inset-0 flex items-center justify-center px-2 sm:px-16 py-2";
-  if (item.isVideo) {
-    return (
-      <div className={center}>
-        <video
-          src={streamHref(item)}
-          poster={item.preview}
-          controls
-          autoPlay
-          onEnded={onEnded}
-          className="max-h-full max-w-full rounded"
-        />
-      </div>
-    );
-  }
+  if (item.isVideo && isMxfName(item.name)) return <MxfPlayer item={item} onEnded={onEnded} />;
+  if (item.isVideo) return <VideoPlayer item={item} onEnded={onEnded} />;
   if (!item.preview) {
     return (
       <div className={`${center} flex-col gap-3 text-white/70`}>

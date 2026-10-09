@@ -311,7 +311,7 @@ export async function purgeRequest(id: string): Promise<boolean> {
   return !!data?.length;
 }
 
-const VIDEO_EXT =/\.(mp4|mov|m4v|avi|mkv|webm|wmv|mts|3gp)$/i;
+const VIDEO_EXT =/\.(mp4|mov|m4v|avi|mkv|webm|wmv|mts|3gp|mxf)$/i;
 
 /**
  * The picked items of each request as gallery items, so the gallery and lightbox can show them. Details come from

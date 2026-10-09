@@ -16,6 +16,9 @@ export function timeAgo(iso: string, now = Date.now()): string {
   return `${days} ${days === 1 ? "day" : "days"} ago`;
 }
 
+/** MXF camera originals (Sony XAVC): played in-browser by remuxing (components/mxf-player.tsx); OneDrive has no thumbnail for them. */
+export const isMxfName = (name: string) => /\.mxf$/i.test(name);
+
 /** Strips private-use characters OneDrive sometimes leaves in synced names. */
 export function cleanName(name: string): string {
   return name.replace(/[-]/g, "").trim();
@@ -42,6 +45,8 @@ export const itemKey = (r: Ref) => `${r.event}/${r.id}`;
 export const downloadHref = (r: Ref) => `/api/download/${r.id}?${refQuery(r)}`;
 /** Same file for in-page use (video src, the compress dialog's source): not counted as a download. */
 export const streamHref = (r: Ref) => `${downloadHref(r)}&stream=1`;
+/** OneDrive's live 1080p stream of a video (DASH manifest, via a 302), for when the original can't be decoded. */
+export const videoStreamHref = (r: Ref) => `/api/video/${r.id}?${refQuery(r)}`;
 /** Records one download of the file without fetching it (the compress dialog's Download button). Returns 204. */
 export const countHref = (r: Ref) => `${downloadHref(r)}&count=1`;
 /** `v` changes when picked covers change, so the browser doesn't reuse its cached redirect to the old one. */

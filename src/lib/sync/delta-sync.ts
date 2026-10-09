@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { EventRow } from "@/lib/events";
+import { isMxfName } from "@/lib/format";
 import { cameraName, drive, SELECT, type DriveItem } from "@/lib/onedrive/client";
 import { getSession } from "@/lib/onedrive/session";
 
@@ -150,7 +151,7 @@ function toRow(i: DriveItem & { parentReference?: { id?: string } }, eventId: st
     child_count: i.folder?.childCount ?? null,
     mime,
     is_image: !!i.image || !!mime?.startsWith("image/"),
-    is_video: !!i.video || !!mime?.startsWith("video/"),
+    is_video: !!i.video || !!mime?.startsWith("video/") || isMxfName(i.name),
     width: i.image?.width ?? i.video?.width ?? null,
     height: i.image?.height ?? i.video?.height ?? null,
     taken_at: i.photo?.takenDateTime ?? null,

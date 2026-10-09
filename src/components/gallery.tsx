@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowDownUp, Check, Download, FileText, Folder, Heart, Play, X } from "lucide-react";
+import { ArrowDownUp, Check, Download, FileText, Film, Folder, Heart, Play, X } from "lucide-react";
 import { setFolderCoverAction } from "@/app/covers/actions";
 import { setLikeAction } from "@/app/likes/actions";
 import type { MediaItem } from "@/lib/onedrive/types";
@@ -514,7 +514,7 @@ function FileTile(props: {
           />
         ) : (
           <span className="size-full grid place-items-center text-subtle">
-            <FileText className="size-8" strokeWidth={1.5} />
+            {item.isVideo ? <Film className="size-8" strokeWidth={1.5} /> : <FileText className="size-8" strokeWidth={1.5} />}
           </span>
         )}
         {item.isVideo && (

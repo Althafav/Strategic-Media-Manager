@@ -1,4 +1,4 @@
-import { thumbSrc } from "@/lib/format";
+import { isMxfName, thumbSrc } from "@/lib/format";
 import type { MediaItem } from "@/lib/onedrive/types";
 
 /** A row of the `nodes` search index. */
@@ -22,7 +22,9 @@ export type NodeRow = {
 
 /** Index row -> gallery item. Thumbnails go through /api/thumb, so they don't expire like OneDrive's signed URLs. */
 export function nodeToItem(r: NodeRow, event: string): MediaItem {
-  const hasThumb = r.is_image || r.is_video;
+  // MXF rows indexed before they counted as video still say is_video = false.
+  const mxf = r.kind === "file" && isMxfName(r.name);
+  const hasThumb = r.is_image || (r.is_video && !mxf);
   return {
     id: r.id,
     event,
@@ -32,7 +34,7 @@ export function nodeToItem(r: NodeRow, event: string): MediaItem {
     childCount: r.child_count ?? undefined,
     mime: r.mime ?? undefined,
     isImage: r.is_image,
-    isVideo: r.is_video,
+    isVideo: r.is_video || mxf,
     width: r.width ?? undefined,
     height: r.height ?? undefined,
     takenAt: r.taken_at ?? undefined,

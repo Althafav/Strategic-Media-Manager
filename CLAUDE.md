@@ -46,6 +46,8 @@ src/lib/access.ts               decides which event a media API request may read
 src/lib/format.ts               URL builders: browseHref, shareHref, downloadHref, coverSrc, thumbSrc (carry t/sig)
 src/lib/zip-download.ts         browser-side zip: /api/manifest -> fetch OneDrive URLs -> (optional compress) -> client-zip -> disk
 src/lib/image-compress.ts       browser-side resize/re-encode (createImageBitmap + canvas; JPG/WebP/PNG); UI in components/compress-dialog.tsx
+src/lib/mxf/                    in-browser MXF player (no transcoding): klv.ts (MXF header/index/content packages), avc.ts, flac.ts,
+                                fmp4.ts (fragmented MP4), player.ts (MxfPlayback: range reads -> remux -> MSE); UI components/mxf-player.tsx
 src/lib/covers.ts               admin-picked folder covers (folder_covers, migration 0016): getEventCovers, setFolderCover; action in app/covers/actions.ts
 src/lib/downloads.ts            per-file download counts (item_downloads, migration 0015): recordItemDownloads, getEventDownloads, topDownloaded
 src/lib/selection-store.ts      cross-folder selection kept in sessionStorage (`smm:selection`), subscribe/getSelection store
@@ -68,7 +70,7 @@ src/app/settings                admin-only: reorder events (event-order-list.tsx
 src/app/search                  index search (Supabase `search_nodes` RPC); event filter `?e=` repeated for several events, set from the checkbox popover in the header search bar (`components/search-box.tsx`)
 src/app/top                     most liked photos (`top_liked` RPC, event filter `?e=`); likes live in `photo_likes` via `lib/likes.ts` + `app/likes/actions.ts`
 src/app/top-downloads           admin-only: most downloaded files (`topDownloaded`, event filter `?e=`), linked from the user menu for the admin only
-src/app/api/{download,thumb,cover}/[id], api/manifest   media APIs (302s to OneDrive / JSON)
+src/app/api/{download,thumb,cover,video}/[id], api/manifest   media APIs (302s to OneDrive / JSON)
 src/app/api/sync                Vercel Cron entry (Bearer CRON_SECRET), daily 22:00 UTC via vercel.json, maxDuration 300
 supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQL editor, in order
 ```
@@ -167,6 +169,24 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
   - Dialogs use native `<dialog>` + `showModal()`, and forms use `useActionState`. Match existing components.
 - Image compression and zipping happen in the browser only; the server never touches file bytes. Compress is
   offered for images only (`isImagePath`).
+- MXF camera originals (Sony XAVC: H.264 High 4:2:2 + 24-bit PCM, 214 files of up to ~43 GB) count as video by
+  extension (`isMxfName`; OneDrive gives them no `video` facet and no thumbnail, so `hasThumb` stays false). Browsers
+  can't open MXF, so the lightbox uses `MxfPlayer`: `lib/mxf/player.ts` gets the URL from `streamHref + &json=1`
+  (not counted), reads the file in 16 MB ranges, remuxes each content package into fragmented MP4 (H.264 frames
+  untouched, PCM wrapped losslessly as FLAC verbatim frames: MSE takes FLAC but not PCM) and keeps ~15 s ahead /
+  10 s behind the playhead (~150 MB). Seeking uses the MXF index (temporal offsets for B-frame order; starts at the
+  previous intra frame and drops its open-GOP leading frames). OneDrive doesn't expose `Content-Range` to scripts,
+  so the file size comes from the item. Works where MSE decodes 4:2:2 H.264 (desktop Chrome/Edge); elsewhere the
+  lightbox offers the download. Needs ~50 Mbps per viewer, and a file read heavily gets throttled per file for a while.
+  OneDrive's own transcoded stream (`mediap` videomanifest) also plays them but was declined: no conversion wanted.
+- Other videos (`components/video-player.tsx`): the original via `streamHref` when the computer can decode it,
+  else OneDrive's live 1080p transcode (user-approved fallback). The camera MP4s are 4K59.94 HEVC Main 4:2:2 10
+  (~97 Mbps, moov at the end), which only some GPUs decode; OneDrive's facet just says `HEVC`, so live listings
+  (`videoCodec`) check `mediaCapabilities` for 4:2:2 up front, and search-index items find out at runtime (no
+  frames / no videoWidth, ~20 s for these files). The stream: `/api/video/[id]` -> `getVideoStreamUrl` builds the
+  `videomanifest` URL (DASH) from the item's thumbnail URL (its tempauth opens only that item) -> Shaka Player
+  (dash build, lazy). OneDrive transcodes 4K sources at ~0.6x real time per segment but in parallel, so Shaka
+  prefetches 4 segments with ABR off; more concurrency gets 429s. MXF has no thumbnail, so it can't use this route.
 - Slow side work after a response (initial/background sync, download counting, `touchLogin`) uses `after()` from
   `next/server` and must swallow its own errors.
 - `/api/thumb` and `/api/cover` 302 with `private, max-age=900` (pre-signed URLs expire, so keep it short);

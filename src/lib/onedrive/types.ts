@@ -12,6 +12,7 @@ export type MediaItem = {
   height?: number;
   takenAt?: string;
   camera?: string;
+  videoCodec?: string; // OneDrive's fourCC for videos ("HEVC", "H264"…), live listings only (not the search index)
   modifiedAt?: string;
   hasThumb?: boolean; // the drive has a thumbnail for this item; the URLs below are built from it
   thumb?: string; // ~400px, an /api/thumb URL (carries t/sig), built by withPreviews
