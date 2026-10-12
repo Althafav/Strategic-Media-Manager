@@ -4,12 +4,15 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, requireSession } from "@/lib/auth";
+import { forgetShare } from "@/lib/onedrive/client";
 import {
+  changeEventLink,
   createEvent,
   deleteEvent,
   getEvent,
   getVisibleEvent,
   listEvents,
+  refreshEventStats,
   renameEvent,
   reorderEvents,
   setCoordinator,
@@ -59,8 +62,11 @@ export async function syncEvent(_prev: SyncEventState, form: FormData): Promise<
   const event = await getVisibleEvent(String(form.get("slug") ?? ""));
   if (!event) return { error: "Event not found. It may have been removed." };
 
+  // New uploads show on the event pages right away instead of after the 5-minute listing cache.
+  forgetShare(event.share_url);
   try {
     const r = await runDeltaSync(event, { budgetMs: 20_000 });
+    await refreshEventStats(event).catch((e) => console.error(`Stats not refreshed for ${event.slug}`, e));
     if (!r.complete) {
       after(() => runDeltaSync(event).catch((e) => console.error(`Background sync failed for ${event.slug}`, e)));
       return { message: "Still indexing. It continues in the background." };
@@ -141,6 +147,27 @@ export async function renameEventAction(slug: string, title: string): Promise<{ 
   }
   revalidatePath("/", "layout");
   return {};
+}
+
+/**
+ * Points the event at a new OneDrive link (same slug; shares, likes and requests stay). Admin only.
+ * Re-indexes in the background; a different folder also gets its index and covers reset (see changeEventLink).
+ */
+export async function changeEventLinkAction(slug: string, shareUrl: string): Promise<{ error?: string; message?: string }> {
+  const denied = await requireAdmin();
+  if (denied) return { error: denied };
+  const event = await getEvent(slug);
+  if (!event) return { error: "Event not found. It may have been removed." };
+  const result = await changeEventLink(event.id, shareUrl);
+  if (!result.ok) return { error: result.error };
+  const updated = result.event;
+  after(() => runDeltaSync(updated).catch((e) => console.error(`Sync after link change failed for ${updated.slug}`, e)));
+  revalidatePath("/", "layout");
+  return {
+    message: result.folderChanged
+      ? "Link updated. This is a different folder, so search is being rebuilt in the background and folder covers were reset."
+      : "Link updated. Search is catching up in the background.",
+  };
 }
 
 /** Saves the display order of events (slugs in the new order, first = top). Admin only. */

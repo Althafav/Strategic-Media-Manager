@@ -91,6 +91,15 @@ async function memo<T>(share: string, key: string, fn: () => Promise<T>): Promis
   return value;
 }
 
+/**
+ * Drops this instance's memoised listings, thumbnails and manifests for one share, so new uploads show at once
+ * (after "Sync now" or a link change). Other server instances still expire theirs within TTL_MS.
+ */
+export function forgetShare(share: string) {
+  for (const key of cache.keys()) if (key.startsWith(`${share}|`)) cache.delete(key);
+  for (const key of manifestCache.keys()) if (key.startsWith(`${share}|`)) manifestCache.delete(key);
+}
+
 /** Root folder facts, used to validate a newly added share link. */
 export async function inspectShare(share: string) {
   const { rootId, rootName } = await getSession(share);

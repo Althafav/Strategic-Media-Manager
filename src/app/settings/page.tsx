@@ -65,6 +65,7 @@ export default async function SettingsPage() {
                   key={e.id}
                   slug={e.slug}
                   title={e.title}
+                  shareUrl={e.share_url}
                   coordinator={hasCoordinators ? { current: e.coordinator_email ?? null, users } : undefined}
                   privacy={hasPrivacy ? { hidden: e.hidden, viewers: e.viewer_emails ?? [], users } : undefined}
                   rootId={e.root_id}

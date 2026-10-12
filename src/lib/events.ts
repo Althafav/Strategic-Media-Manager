@@ -1,7 +1,7 @@
 import { getSession, type Session } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { inspectShare } from "@/lib/onedrive/client";
-import { isSupportedShareUrl } from "@/lib/onedrive/session";
+import { forgetShare, inspectShare } from "@/lib/onedrive/client";
+import { invalidateSession, isSupportedShareUrl } from "@/lib/onedrive/session";
 
 export type EventRow = {
   id: string;
@@ -113,6 +113,89 @@ export async function createEvent(input: {
   await db().from("event_sync").insert({ event_id: data.id });
   cached = null;
   return { ok: true, event: data as EventRow };
+}
+
+export type ChangeLinkResult = { ok: true; event: EventRow; folderChanged: boolean } | { ok: false; error: string };
+
+/**
+ * Admin only (checked by the caller). Points the event at a new share link, validated by opening it like createEvent.
+ * The slug, shares, likes, downloads and requests stay. When the link opens a different folder (new item ids),
+ * the search index, its sync cursor and the folder cover picks are reset; the caller then starts a fresh sync.
+ */
+export async function changeEventLink(eventId: string, value: string): Promise<ChangeLinkResult> {
+  const shareUrl = normalizeShareUrl(value);
+  if (!shareUrl || !isSupportedShareUrl(shareUrl)) {
+    return {
+      ok: false,
+      error: "Paste a OneDrive / SharePoint folder link (https://…sharepoint.com/:f:/…) shared with “Anyone with the link”.",
+    };
+  }
+
+  const { data: current, error: readError } = await db().from("events").select("*").eq("id", eventId).maybeSingle();
+  if (readError) return { ok: false, error: readError.message };
+  if (!current) return { ok: false, error: "Event not found. It may have been removed." };
+  const old = current as EventRow;
+
+  const existing = await db().from("events").select("title").eq("share_url", shareUrl).neq("id", eventId).maybeSingle();
+  if (existing.data) return { ok: false, error: `This link is already added as “${existing.data.title}”.` };
+
+  // A running sync still reads the old link and would write old items back into a reset index.
+  const { data: sync } = await db().from("event_sync").select("*").eq("event_id", eventId).maybeSingle();
+  if (sync?.locked_until && new Date(sync.locked_until).getTime() > Date.now()) {
+    return { ok: false, error: "A sync is running for this event. Try again in a few minutes." };
+  }
+
+  let facts;
+  try {
+    invalidateSession(shareUrl);
+    facts = await inspectShare(shareUrl);
+  } catch {
+    return {
+      ok: false,
+      error: "Couldn’t open that link. Make sure it is a folder shared with “Anyone with the link” and that it hasn’t expired.",
+    };
+  }
+
+  const { data, error } = await db()
+    .from("events")
+    .update({
+      share_url: shareUrl,
+      root_id: facts.rootId,
+      root_name: facts.rootName,
+      item_count: facts.itemCount,
+      size: facts.size,
+    })
+    .eq("id", eventId)
+    .select("*")
+    .single();
+  if (error) return { ok: false, error: error.message };
+
+  const folderChanged = old.root_id !== facts.rootId;
+  if (folderChanged) {
+    const results = await Promise.all([
+      db().from("nodes").delete().eq("event_id", eventId),
+      db().from("event_sync").update({ next_link: null, delta_link: null, last_error: null }).eq("event_id", eventId),
+      db().from("folder_covers").delete().eq("event_id", eventId),
+    ]);
+    // folder_covers is missing before migration 0016; nothing to reset then.
+    const failed = results.find((r, i) => r.error && !(i === 2 && r.error.code === "42P01"));
+    if (failed?.error) return { ok: false, error: `Link saved, but resetting the old index failed: ${failed.error.message}` };
+  }
+
+  forgetShare(old.share_url);
+  forgetShare(shareUrl);
+  if (old.share_url !== shareUrl) invalidateSession(old.share_url);
+  cached = null;
+  return { ok: true, event: data as EventRow, folderChanged };
+}
+
+/** Re-reads the root folder's item count and size shown on the event card. Errors are the caller's to swallow. */
+export async function refreshEventStats(event: EventRow): Promise<void> {
+  const facts = await inspectShare(event.share_url);
+  if (facts.itemCount === event.item_count && facts.size === event.size) return;
+  const { error } = await db().from("events").update({ item_count: facts.itemCount, size: facts.size }).eq("id", event.id);
+  cached = null;
+  if (error) throw error;
 }
 
 /**

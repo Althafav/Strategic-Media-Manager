@@ -3,13 +3,15 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
-import { renameEventAction, setEventCoordinator, setEventPrivacyAction } from "@/app/events/actions";
+import { changeEventLinkAction, renameEventAction, setEventCoordinator, setEventPrivacyAction } from "@/app/events/actions";
 import { EventPrivacyFields, type PrivacyUser } from "@/components/event-privacy-fields";
 import { EventCoverPicker } from "./event-cover-picker";
 
 type Props = {
   slug: string;
   title: string;
+  /** The event's current OneDrive share link. */
+  shareUrl: string;
   /** Missing until migration 0011 runs. */
   coordinator?: { current: string | null; users: { email: string; label: string }[] };
   /** Missing until migration 0019 runs. */
@@ -24,7 +26,7 @@ const field =
   "w-full h-10 rounded-md bg-background border border-border px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 disabled:opacity-60";
 
 /** One event's admin settings: name and privacy (saved on demand), coordinator (saved on change) and cover. */
-export function EventSettingsRow({ slug, title, coordinator, privacy, rootId, coverId }: Props) {
+export function EventSettingsRow({ slug, title, shareUrl, coordinator, privacy, rootId, coverId }: Props) {
   const router = useRouter();
   const [name, setName] = useState(title);
   const [renaming, startRename] = useTransition();
@@ -100,6 +102,7 @@ export function EventSettingsRow({ slug, title, coordinator, privacy, rootId, co
           </label>
         )}
       </div>
+      <LinkSection slug={slug} shareUrl={shareUrl} onError={setError} />
       {privacy && <PrivacySection slug={slug} privacy={privacy} onError={setError} />}
       {rootId && (
         <div className="mt-4">
@@ -112,6 +115,67 @@ export function EventSettingsRow({ slug, title, coordinator, privacy, rootId, co
         </p>
       )}
     </li>
+  );
+}
+
+/** Replaces the event's OneDrive link, e.g. after the folder was re-shared or moved to a new copy. */
+function LinkSection({ slug, shareUrl, onError }: { slug: string; shareUrl: string; onError: (error: string | undefined) => void }) {
+  const router = useRouter();
+  const [link, setLink] = useState(shareUrl);
+  const [message, setMessage] = useState<string>();
+  const [saving, startSave] = useTransition();
+  const dirty = link.trim() !== shareUrl && !!link.trim();
+
+  const save = () =>
+    startSave(async () => {
+      setMessage(undefined);
+      const res = await changeEventLinkAction(slug, link);
+      onError(res.error);
+      setMessage(res.message);
+      if (!res.error) router.refresh();
+    });
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (dirty) save();
+      }}
+      className="mt-4"
+    >
+      <label className="block">
+        <span className="text-sm font-medium">OneDrive link</span>
+        <div className="mt-1.5 flex items-center gap-2">
+          <input
+            type="url"
+            value={link}
+            onChange={(e) => {
+              setLink(e.currentTarget.value);
+              setMessage(undefined);
+            }}
+            required
+            disabled={saving}
+            spellCheck={false}
+            className={`${field} font-mono text-xs min-w-0`}
+          />
+          <button
+            disabled={!dirty || saving}
+            className="h-10 px-3 shrink-0 rounded-md bg-accent text-accent-foreground text-sm font-medium inline-flex items-center gap-2 disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+            {saving ? "Checking link…" : "Update link"}
+          </button>
+        </div>
+      </label>
+      <p className="mt-1.5 text-xs text-subtle">
+        Paste the new folder link shared with “Anyone with the link”. The event’s address, share links and likes stay the same.
+      </p>
+      {message && (
+        <p role="status" className="mt-2 text-sm rounded-md border border-border bg-background px-3 py-2">
+          {message}
+        </p>
+      )}
+    </form>
   );
 }
 

@@ -66,7 +66,7 @@ src/app/api/auth/sso, sso-login Microsoft SSO start (sets state cookie) and brok
 src/app/users                   admin-only: add/remove SSO users, approve/reject pending access requests
 src/app/requests                photo requests: Inbox tab (event's coordinator; admin sees all) / Sent tab (own requests), /requests/[id] shows the picked photos in the Gallery
 src/lib/requests.ts             photo_requests queries + canHandle (server-only); client-safe types/labels in request-types.ts
-src/app/settings                admin-only: reorder events (event-order-list.tsx: drag or arrows, saves `events.sort` via `reorderEventsAction`), rename events, pick each event's cover (event-cover-picker.tsx: browse any folder, stored as the root folder's folder_covers row), set each event's marketing coordinator
+src/app/settings                admin-only: reorder events (event-order-list.tsx: drag or arrows, saves `events.sort` via `reorderEventsAction`), rename events, pick each event's cover (event-cover-picker.tsx: browse any folder, stored as the root folder's folder_covers row), set each event's marketing coordinator, change each event's OneDrive link (`changeEventLinkAction` -> `changeEventLink`: same slug; a different root folder resets `nodes`, the sync cursor and `folder_covers`, then re-syncs)
 src/app/search                  index search (Supabase `search_nodes` RPC); event filter `?e=` repeated for several events, set from the checkbox popover in the header search bar (`components/search-box.tsx`)
 src/app/top                     most liked photos (`top_liked` RPC, event filter `?e=`); likes live in `photo_likes` via `lib/likes.ts` + `app/likes/actions.ts`
 src/app/top-downloads           admin-only: most downloaded files (`topDownloaded`, event filter `?e=`), linked from the user menu for the admin only
@@ -155,7 +155,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 - Every OneDrive call takes the event's `share_url` first. Events are addressed by `slug` in URLs and API
   `?e=` params.
 - Pages that hit OneDrive are `force-dynamic`. Folder listings are memoised 5 min in memory (`memo`, keyed by
-  share + base id + path).
+  share + base id + path). `forgetShare(share)` clears them on this instance ("Sync now" and link changes call it).
 - Visual design ("light table", see `globals.css`):
   - A neutral viewing-grey background (`bg-background`), white panels (`bg-surface`) and ink text. Keep
     neutral greys so photo colour reads true.
