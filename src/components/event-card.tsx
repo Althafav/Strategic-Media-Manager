@@ -26,7 +26,7 @@ type Props = {
 
 const REVEAL = "[@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-within:opacity-100";
 
-/** One event as a wide sheet: the cover photo leads, the title sits beside it in condensed type. */
+/** One event as a sheet: the cover photo leads, the title sits below it in condensed type. */
 export function EventCard({ slug, title, rootId, coverId, itemCount, size, sync, isPrivate = false, canRemove = false }: Props) {
   const [hasCover, setHasCover] = useState(!!rootId);
   const count = itemCount ?? 0;
@@ -35,7 +35,7 @@ export function EventCard({ slug, title, rootId, coverId, itemCount, size, sync,
     <div className="group relative">
       <Link
         href={browseHref(slug)}
-        className="grid md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] bg-surface border border-border hover:border-foreground transition-colors"
+        className="flex flex-col h-full bg-surface border border-border hover:border-foreground transition-colors"
       >
         <div className="aspect-[16/9] bg-muted grid place-items-center overflow-hidden">
           {hasCover ? (
@@ -51,13 +51,13 @@ export function EventCard({ slug, title, rootId, coverId, itemCount, size, sync,
             <Images className="size-10 text-subtle" />
           )}
         </div>
-        <div className="flex flex-col justify-end gap-2 p-5 md:p-8">
+        <div className="flex flex-col justify-end gap-2 p-5 flex-1">
           {isPrivate && (
             <span className="self-start inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-xs text-subtle">
               <Lock className="size-3.5" aria-hidden /> Private
             </span>
           )}
-          <h2 className="display text-4xl md:text-5xl text-balance">{title}</h2>
+          <h2 className="display text-3xl text-balance">{title}</h2>
           <p className="text-sm text-subtle">
             {count} {count === 1 ? "folder" : "folders"}
             {size ? `, ${formatBytes(size)}` : ""}

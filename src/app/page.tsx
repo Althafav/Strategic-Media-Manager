@@ -41,7 +41,7 @@ export default async function Home() {
       </div>
 
       {events.length ? (
-        <section className="grid gap-4">
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {events.map((e) => (
             <EventCard key={e.id} slug={e.slug} title={e.title} rootId={e.root_id} coverId={e.root_id ? covers[e.root_id] : undefined} itemCount={e.item_count} size={e.size} sync={sync.get(e.id)} isPrivate={e.hidden} canRemove={admin} />
           ))}
