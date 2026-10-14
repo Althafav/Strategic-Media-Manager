@@ -4,8 +4,7 @@ import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { appBaseUrl } from "@/lib/sso";
 import { listEvents, type EventRow } from "@/lib/events";
-import { thumbSrc } from "@/lib/format";
-import { nodeToItem, type NodeRow } from "@/lib/nodes";
+import { pickedItem, type NodeRow } from "@/lib/nodes";
 import { isValidId } from "@/lib/onedrive/client";
 import type { MediaItem } from "@/lib/onedrive/types";
 import {
@@ -311,8 +310,6 @@ export async function purgeRequest(id: string): Promise<boolean> {
   return !!data?.length;
 }
 
-const VIDEO_EXT =/\.(mp4|mov|m4v|avi|mkv|webm|wmv|mts|3gp|mxf)$/i;
-
 /**
  * The picked items of each request as gallery items, so the gallery and lightbox can show them. Details come from
  * the search index; items it doesn't have yet (not synced) fall back to what the request stored. Keyed by request id.
@@ -332,26 +329,7 @@ export async function requestMedia(rows: PhotoRequestRow[], events: EventRow[]):
     if (!event || !r.items?.length) continue;
     out.set(
       r.id,
-      r.items.map((i) => {
-        // Where the item lives: the index knows best, then the folder stored with the pick, then the request's folder.
-        const location = i.path ?? r.folder_path;
-        const node = nodes.get(`${r.event_id}/${i.id}`);
-        if (node) return node.path == null ? { ...nodeToItem(node, event), location } : nodeToItem(node, event);
-        const isVideo = i.kind === "file" && VIDEO_EXT.test(i.name);
-        const ref = { event, id: i.id };
-        return {
-          id: i.id,
-          event,
-          name: i.name,
-          kind: i.kind,
-          size: 0,
-          isImage: i.kind === "file" && !isVideo,
-          isVideo,
-          thumb: i.kind === "file" ? thumbSrc(ref, 400) : undefined,
-          preview: i.kind === "file" ? thumbSrc(ref, 1920) : undefined,
-          location,
-        };
-      }),
+      r.items.map((i) => pickedItem(i, event, i.path ?? r.folder_path, nodes.get(`${r.event_id}/${i.id}`))),
     );
   }
   return out;

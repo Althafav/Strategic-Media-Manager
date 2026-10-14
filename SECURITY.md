@@ -40,6 +40,11 @@ the authoritative per-layer rules.
   admin picked (`events.viewer_emails`). Anyone else gets "not found" on the event page, from the media APIs and from
   the zip manifest, and the event is left out of the home page, search and most liked (`canSeeEvent` in `lib/events.ts`).
   Share links bypass this on purpose: existing links keep working, and only the admin can create new ones.
+- Albums (migration 0021): a team member's saved list of item ids, no files. Only the owner changes it; the team
+  members in `albums.shared_with` may open it, anyone else gets "not found". Albums never widen access: every reader
+  still needs to see each item's event (`canSeeEvent`), items from other private events are left out, and media
+  requests go through the normal session branch of `resolveItemAccess`. A share link made from an album is an ordinary
+  picked-items link (one event, a snapshot).
 - Path traversal is blocked: `getFolder` rejects `.`, `..` and slashes, and resolves relative to the
   share's `folder_id`, so a visitor cannot climb above the shared folder.
 - Fails closed: share lookups `.catch(() => null)`; revoked/expired shares resolve to `null` → 403.

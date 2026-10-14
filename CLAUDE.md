@@ -65,6 +65,10 @@ src/app/login                   login page (Microsoft button + admin password fo
 src/app/api/auth/sso, sso-login Microsoft SSO start (sets state cookie) and broker callback (creates user session)
 src/app/users                   admin-only: add/remove SSO users, approve/reject pending access requests
 src/app/requests                photo requests: Inbox tab (event's coordinator; admin sees all) / Sent tab (own requests), /requests/[id] shows the picked photos in the Gallery
+src/app/albums                  albums: /albums (own + shared with me, "New album"), /albums/[id] (Gallery; owner: Share = team members + a
+                                picked-items link via CreateShareForm, Rename, Delete, "Remove from album" in the selection bar)
+src/lib/albums.ts               albums + album_items queries (server-only); client-safe types in album-types.ts; "Add to album" in the
+                                selection bar on every team Gallery (components/add-to-album-button.tsx)
 src/lib/requests.ts             photo_requests queries + canHandle (server-only); client-safe types/labels in request-types.ts
 src/app/settings                admin-only: reorder events (event-order-list.tsx: drag or arrows, saves `events.sort` via `reorderEventsAction`), rename events, pick each event's cover (event-cover-picker.tsx: browse any folder, stored as the root folder's folder_covers row), set each event's marketing coordinator, change each event's OneDrive link (`changeEventLinkAction` -> `changeEventLink`: same slug; a different root folder resets `nodes`, the sync cursor and `folder_covers`, then re-syncs)
 src/app/search                  index search (Supabase `search_nodes` RPC); event filter `?e=` repeated for several events, set from the checkbox popover in the header search bar (`components/search-box.tsx`)
@@ -204,7 +208,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` → `0019_private_events` → `0020_search_events` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` → `0019_private_events` → `0020_search_events` → `0021_albums` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
@@ -223,6 +227,11 @@ here; DDL can't be run from the app. Tables:
   `path` is each item's own folder (a selection can span folders) and `folder_path` their common parent. Older rows
   lack `path`: fall back to `folder_path`. Requesting items already in one of your open requests is refused.
   `requester_seen_at` (0013) drives the "new reply" badge: `unseen_request_answers(owner)` RPC; opening Sent marks seen.
+- `albums` + `album_items` (0021): a team member's collections. `created_by` = `shareOwner`; only the owner changes an
+  album (`isAlbumOwner`); `shared_with` holds active team members' emails who may open/download it. Items (PK
+  `(album_id, event_id, item_id)`, up to 1,000, with `name`/`kind`/`path`) can span events and folders; pages render them
+  with `pickedItem` (`lib/nodes.ts`, shared with requests) and drop items from events the viewer can't see
+  (`listVisibleEvents`). Deleting an album is immediate (no bin); deleting an event cascades its album items.
 
 Recycle bin (0018): revoking a share link and deleting a photo request only set `deleted_at`/`deleted_by` on
 `shares`/`photo_requests`. Every read of those tables must filter `.is("deleted_at", null)` (bin views use

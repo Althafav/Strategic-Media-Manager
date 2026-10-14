@@ -45,3 +45,32 @@ export function nodeToItem(r: NodeRow, event: string): MediaItem {
     location: r.path ? r.path.split("/") : [],
   };
 }
+
+const VIDEO_EXT = /\.(mp4|mov|m4v|avi|mkv|webm|wmv|mts|3gp|mxf)$/i;
+
+/**
+ * A hand-picked item (photo request, album) as a gallery item. Details come from its index row; items the index
+ * doesn't have yet (not synced) fall back to the stored name/kind. `location` is the folder stored with the pick.
+ */
+export function pickedItem(
+  pick: { id: string; name: string; kind: "file" | "folder" },
+  event: string,
+  location: string[],
+  node: NodeRow | undefined,
+): MediaItem {
+  if (node) return node.path == null ? { ...nodeToItem(node, event), location } : nodeToItem(node, event);
+  const isVideo = pick.kind === "file" && VIDEO_EXT.test(pick.name);
+  const ref = { event, id: pick.id };
+  return {
+    id: pick.id,
+    event,
+    name: pick.name,
+    kind: pick.kind,
+    size: 0,
+    isImage: pick.kind === "file" && !isVideo,
+    isVideo,
+    thumb: pick.kind === "file" ? thumbSrc(ref, 400) : undefined,
+    preview: pick.kind === "file" ? thumbSrc(ref, 1920) : undefined,
+    location,
+  };
+}

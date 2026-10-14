@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowDownUp, Check, Download, FileText, Film, Folder, Heart, Play, X } from "lucide-react";
+import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowDownUp, Check, Download, FileText, Film, Folder, Heart, Loader2, Play, Trash2, X } from "lucide-react";
 import { setFolderCoverAction } from "@/app/covers/actions";
 import { setLikeAction } from "@/app/likes/actions";
 import type { MediaItem } from "@/lib/onedrive/types";
@@ -12,6 +13,7 @@ import { getSelection, getServerSelection, setSelection, subscribeSelection, typ
 import type { CompressOptions } from "@/lib/image-compress";
 import { downloadAsZip, type ZipProgress } from "@/lib/zip-download";
 import { CompressButton } from "./compress-dialog";
+import { AddToAlbumButton } from "./add-to-album-button";
 import { Lightbox } from "./lightbox";
 import { RequestItemsButton } from "./request-photos-button";
 import { ShareItemsButton } from "./share-items-button";
@@ -42,11 +44,13 @@ type Props = {
   covers?: Record<string, string>;
   /** Admin: "Set as cover" in the lightbox picks the open photo as this folder's cover. */
   canSetCover?: boolean;
+  /** Album owner: "Remove from album" for the selection (a bound server action). */
+  removeSelected?: (refs: { event: string; id: string }[]) => Promise<{ error?: string }>;
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder, likes, downloads, requestTo, covers: initialCovers, canSetCover }: Props) {
+export function Gallery({ path, folder, downloadAll, canShare, showDetails, base, folderName, items, listedOrder, likes, downloads, requestTo, covers: initialCovers, canSetCover, removeSelected }: Props) {
   const [sort, setSort] = useStoredSort(listedOrder ? "smm:sort:listed" : "smm:sort", listedOrder ? "listed" : "name-asc");
   const [filter, setFilter] = useState<FileKind | "all">("all");
   const allFiles = useMemo(() => items.filter((i) => i.kind === "file"), [items]);
@@ -62,6 +66,8 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
   const zip = useZip();
   const like = useLikes(likes);
   const cover = useCovers(initialCovers, folder);
+  const router = useRouter();
+  const [removing, startRemove] = useTransition();
 
   const selecting = selected.size > 0;
   const selectedBytes = selectedItems.reduce((n, i) => n + i.size, 0);
@@ -109,6 +115,21 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
       opts,
     );
   const canCompress = selectedItems.some((i) => i.kind === "folder" || i.isImage);
+
+  const removeFromAlbum = () => {
+    if (!removeSelected) return;
+    // The selection can hold picks from other pages; only this album's items can be removed.
+    const here = selectedItems.filter((s) => items.some((i) => itemKey(i) === itemKey(s)));
+    const n = here.length;
+    if (!n) return;
+    if (!window.confirm(`Remove ${plural(n, "item", "items")} from this album? The files stay in OneDrive.`)) return;
+    startRemove(async () => {
+      const res = await removeSelected(here.map(({ event, id }) => ({ event, id })));
+      if (res.error) window.alert(res.error);
+      else setSelected(new Set());
+      router.refresh();
+    });
+  };
 
   const everything = folder ? [folder] : downloadAll;
 
@@ -310,6 +331,17 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
                     folderPath={path}
                     folderName={folder && onThisPage ? folderName : undefined}
                   />
+                )}
+                {canShare && <AddToAlbumButton items={selectedItems} folderPath={path} />}
+                {removeSelected && (
+                  <button
+                    type="button"
+                    disabled={removing}
+                    onClick={removeFromAlbum}
+                    className="h-9 px-3 rounded-md border border-white/25 text-sm font-medium inline-flex items-center gap-2 hover:bg-white/10 disabled:opacity-60"
+                  >
+                    {removing ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />} Remove from album
+                  </button>
                 )}
                 {requestTo && folder && <RequestItemsButton event={folder.event} items={selectedItems} folderPath={path} coordinator={requestTo} />}
                 {canCompress && <CompressButton items={selectedItems} onBatch={compressSelected} variant="bar" />}

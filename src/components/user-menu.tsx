@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Download, Heart, ImagePlus, Link2, LogOut, Mail, Settings, Trash2, Users, type LucideIcon } from "lucide-react";
+import { Album, Download, Heart, ImagePlus, Link2, LogOut, Mail, Settings, Trash2, Users, type LucideIcon } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { REQUESTS_SEEN_EVENT, type RequestsSeen } from "@/lib/request-types";
 
@@ -102,6 +102,7 @@ export function UserMenu({ name, email, isAdmin, newRequests, newReplies, pendin
             <div className="text-xs text-subtle truncate">{email ?? "Administrator"}</div>
           </div>
 
+          <MenuLink href="/albums" icon={Album} label="Albums" />
           <MenuLink href="/top" icon={Heart} label="Most liked" />
           {isAdmin && <MenuLink href="/top-downloads" icon={Download} label="Most downloaded" />}
           <MenuLink href="/requests" icon={ImagePlus} label="Requests" count={requestCount} />
