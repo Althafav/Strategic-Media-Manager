@@ -9,6 +9,8 @@ export type UserRow = {
   /** Migration 0009. Absent until it runs, which means active. */
   status?: "active" | "pending";
   requested_at?: string | null;
+  /** Migration 0022. Last request seen by proxy.ts, accurate to SEEN_EVERY_MS. */
+  last_seen_at?: string | null;
 };
 
 const MAX_PENDING = 100; // the broker's ?email= is unsigned, so bound how many requests strangers can create
@@ -103,4 +105,30 @@ export async function removeUser(email: string): Promise<void> {
 export async function touchLogin(email: string): Promise<void> {
   await db().from("app_users").update({ last_login_at: new Date().toISOString() }).eq("email", normalizeEmail(email));
   cached = null;
+}
+
+/** "Online now" on /users means seen within this window; also how often touchSeen writes per user. */
+export const SEEN_EVERY_MS = 5 * 60_000;
+const lastTouched = new Map<string, number>();
+
+/**
+ * Records activity for an SSO user (called by proxy.ts on every allowed request). The in-memory map skips most
+ * calls on this instance; the conditional update keeps other instances from writing more often than that.
+ * Leaves the users cache alone, so /users can lag up to its TTL. Swallows its own errors (e.g. before 0022).
+ */
+export async function touchSeen(email: string): Promise<void> {
+  const e = normalizeEmail(email);
+  const now = Date.now();
+  if (now - (lastTouched.get(e) ?? 0) < SEEN_EVERY_MS) return;
+  lastTouched.set(e, now);
+  const cutoff = new Date(now - SEEN_EVERY_MS).toISOString();
+  await db()
+    .from("app_users")
+    .update({ last_seen_at: new Date(now).toISOString() })
+    .eq("email", e)
+    .or(`last_seen_at.is.null,last_seen_at.lt.${cutoff}`)
+    .then(
+      () => {},
+      () => {},
+    );
 }

@@ -192,7 +192,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
   (dash build, lazy). OneDrive transcodes 4K sources at ~0.6x real time per segment but in parallel, so Shaka
   prefetches 4 segments with ABR off; more concurrency gets 429s. MXF has no thumbnail, so it can't use this route.
 - Slow side work after a response (initial/background sync, download counting, `touchLogin`) uses `after()` from
-  `next/server` and must swallow its own errors.
+  `next/server` and must swallow its own errors. In `proxy.ts` use `event.waitUntil` instead (`recordView`, `touchSeen`).
 - `/api/thumb` and `/api/cover` 302 with `private, max-age=900` (pre-signed URLs expire, so keep it short);
   download/manifest responses are `no-store`.
 - Outgoing mail (`sendEmail`): a new photo request emails the event's coordinator. The API's firewall 403s Node's
@@ -208,13 +208,14 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` → `0019_private_events` → `0020_search_events` → `0021_albums` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` → `0019_private_events` → `0020_search_events` → `0021_albums` → `0022_user_last_seen` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
 - `nodes` (search index, PK `(event_id, id)`, `path` filled by `refresh_paths`)
 - `shares`
-- `app_users` (SSO allowlist; `status` active/pending: unknown Microsoft sign-ins are stored as pending until an admin approves)
+- `app_users` (SSO allowlist; `status` active/pending: unknown Microsoft sign-ins are stored as pending until an admin approves; `last_seen_at` (0022) is set by
+  `touchSeen` from `proxy.ts` at most every 5 min per user and shown on /users as "Online now" / "Last seen …"; the admin login isn't tracked)
 - `photo_likes` (one row per team member per liked item; owner = `shareOwner`; team only, never on share pages)
 - `item_downloads` (per-file download count, PK `(event_id, item_id)`; `record_item_downloads(ev, ids)` RPC adds 1 per id)
 - `folder_covers` (admin's cover pick per folder, PK `(event_id, folder_id)`; set from the lightbox "Set as cover" on event pages, must be an image directly in that folder. `/api/cover` uses picks first, also for parent folders that fall back to a subfolder; otherwise the first image in name order. Folder tiles add `&v=` from the picks so a change skips the 15-min cached redirect)

@@ -1,6 +1,7 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifyActiveSession, verifySessionToken } from "@/lib/auth";
 import { recordView } from "@/lib/shares";
+import { touchSeen } from "@/lib/users";
 
 // /api/sync is called by Vercel Cron and checks its own CRON_SECRET.
 // /s/<token> pages are share links; they check the token themselves.
@@ -26,7 +27,11 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return NextResponse.next();
   if (request.nextUrl.searchParams.has("t") && SHARE_APIS.some((p) => pathname.startsWith(p))) return NextResponse.next();
   const token = request.cookies.get(SESSION_COOKIE)?.value;
-  if (await verifyActiveSession(token)) return NextResponse.next();
+  const session = await verifyActiveSession(token);
+  if (session) {
+    if (session.role === "user" && session.email) event.waitUntil(touchSeen(session.email));
+    return NextResponse.next();
+  }
   // Valid signature but no longer active: an SSO user the admin removed. Drop the cookie.
   const removed = verifySessionToken(token) !== null;
 

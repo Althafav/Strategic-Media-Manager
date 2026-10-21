@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
+import { timeAgo } from "@/lib/format";
 import { formatDate } from "@/lib/share-types";
-import { isPending, listUsers } from "@/lib/users";
+import { isPending, listUsers, SEEN_EVERY_MS, type UserRow } from "@/lib/users";
 import { AddUserForm, ApproveUserButton, RemoveUserButton } from "./user-controls";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,9 @@ export default async function UsersPage() {
   if (!(await isAdmin())) notFound();
   const users = await listUsers().catch(() => null);
   const requests = (users ?? []).filter(isPending).sort((a, b) => (b.requested_at ?? "").localeCompare(a.requested_at ?? ""));
-  const active = (users ?? []).filter((u) => !isPending(u));
+  // Most recently online first; before 0022 or never seen, the last sign-in counts. Never signed in goes last.
+  const lastOnline = (u: UserRow) => u.last_seen_at ?? u.last_login_at ?? "";
+  const active = (users ?? []).filter((u) => !isPending(u)).sort((a, b) => lastOnline(b).localeCompare(lastOnline(a)));
 
   return (
     <div className="max-w-3xl">
@@ -65,6 +68,7 @@ export default async function UsersPage() {
                   <div className="text-xs text-subtle w-44">
                     <p>Added {formatDate(u.added_at)}</p>
                     <p>{u.last_login_at ? `Last sign-in ${formatDate(u.last_login_at)}` : "Hasn't signed in yet"}</p>
+                    {u.last_seen_at && <LastSeen seen={lastSeen(u.last_seen_at)} />}
                   </div>
                   <RemoveUserButton email={u.email} />
                 </li>
@@ -75,4 +79,26 @@ export default async function UsersPage() {
       )}
     </div>
   );
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60_000;
+
+/** Last activity recorded by proxy.ts (migration 0022): online, or "3 h ago", or a date after a week. */
+function lastSeen(iso: string): { online: true } | { online: false; when: string } {
+  const now = Date.now();
+  const ago = now - Date.parse(iso);
+  if (ago < SEEN_EVERY_MS) return { online: true };
+  return { online: false, when: ago < WEEK_MS ? timeAgo(iso, now) : formatDate(iso) };
+}
+
+function LastSeen({ seen }: { seen: ReturnType<typeof lastSeen> }) {
+  if (seen.online) {
+    return (
+      <p className="flex items-center gap-1.5 text-foreground">
+        <span className="size-1.5 rounded-full bg-emerald-600" aria-hidden />
+        Online now
+      </p>
+    );
+  }
+  return <p>Last seen {seen.when}</p>;
 }
