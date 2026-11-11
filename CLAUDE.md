@@ -59,7 +59,8 @@ src/lib/faces.ts                browser-only face detection API (loadFaces, dete
                                 (main-thread fallback). `loadFaces({ gpu: true })` (the background scan) loads the WebGPU build; a selfie uses the CPU build
 src/lib/face-detect.ts          ONNX Runtime Web: YuNet detector (MIT) + SFace recogniser (Apache-2.0), 128-d embeddings. Models in
                                 public/models/faces-v1, runtime wasm in public/ort-<version> (copied from node_modules/onnxruntime-web/dist: only the plain
-                                and `asyncify` ort-wasm-simd-threaded files are used; copy again and rename the folder when the package is updated). YuNet sees faces of ~10-300 px, so event photos (`tiles`) get a
+                                and `asyncify` ort-wasm-simd-threaded files are used; copy again and rename the folder when the package is updated,
+                                also in `PUBLIC_PATHS` in proxy.ts, or share-link guests get the login page instead of the runtime). YuNet sees faces of ~10-300 px, so event photos (`tiles`) get a
                                 640 px pass plus a 1920 px pass. WebGPU sessions must be created one at a time
 src/lib/face-types.ts           client-safe: MATCH_DIST/LOOSE_DIST/LEVEL_DIST/PERSON_DIST (cosine; PROVISIONAL, from a small sample), embedding
                                 wire format (base64 Float32), Person/PhotoFace types

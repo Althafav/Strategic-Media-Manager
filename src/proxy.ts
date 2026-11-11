@@ -6,8 +6,9 @@ import { touchSeen } from "@/lib/users";
 // /api/sync is called by Vercel Cron and checks its own CRON_SECRET.
 // /s/<token> pages are share links; they check the token themselves.
 // /api/auth/sso and /sso-login are the Microsoft SSO start and callback (lib/sso.ts).
-// /models holds the open face-detection model files that share pages load for "Find my photos" (lib/faces.ts).
-const PUBLIC_PATHS = ["/login", "/api/sync", "/s", "/api/auth/sso", "/sso-login", "/models"];
+// /models and /ort-<version> hold the open face-detection models and their ONNX runtime that share pages load for
+// "Find my photos" (lib/face-detect.ts). Rename the runtime folder here too when the package is updated.
+const PUBLIC_PATHS = ["/login", "/api/sync", "/s", "/api/auth/sso", "/sso-login", "/models", "/ort-1.31.1"];
 // Media APIs called from share pages carry ?t=<token>&sig=…, verified in the route (lib/access.ts).
 const SHARE_APIS = ["/api/thumb/", "/api/cover/", "/api/download/", "/api/video/", "/api/manifest"];
 
