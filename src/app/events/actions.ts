@@ -18,6 +18,7 @@ import {
   setCoordinator,
   setEventPrivacy,
 } from "@/lib/events";
+import { setFaceScan } from "@/lib/face-index";
 import { isAllowedUser, normalizeEmail } from "@/lib/users";
 import { runDeltaSync, SyncBusyError } from "@/lib/sync/delta-sync";
 import { describeSyncError } from "@/lib/sync/status";
@@ -46,6 +47,11 @@ export async function addEvent(_prev: AddEventState, form: FormData): Promise<Ad
   // Optional. The event is already saved, so a failure here (e.g. migration 0011 not run) only skips the coordinator.
   if (coordinator) await setCoordinator(event.id, coordinator).catch((e) => console.error(`Coordinator not set for ${event.slug}`, e));
   after(() => runDeltaSync(event).catch((e) => console.error(`Initial sync failed for ${event.slug}`, e)));
+
+  // Optional face search: the admin's background scanner picks the event up once the first sync is done.
+  if (form.get("faceSearch") === "on") {
+    await setFaceScan(event.id, true).catch((e) => console.error(`Face search not enabled for ${event.slug}`, e));
+  }
 
   redirect(`/e/${encodeURIComponent(event.slug)}`);
 }

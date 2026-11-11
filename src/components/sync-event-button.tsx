@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { RefreshCw } from "lucide-react";
 import { syncEvent, type SyncEventState } from "@/app/events/actions";
+import { requestFaceScan } from "@/lib/face-scan-event";
 
 /**
  * "Sync now" for one event's search index. The outcome shows beside the button until the next click.
@@ -10,6 +11,10 @@ import { syncEvent, type SyncEventState } from "@/app/events/actions";
  */
 export function SyncEventButton({ slug, title, revealClass = "" }: { slug: string; title: string; revealClass?: string }) {
   const [state, action, pending] = useActionState<SyncEventState, FormData>(syncEvent, {});
+  // A finished sync may have added photos: have the face scanner (admin, in the header) look right away.
+  useEffect(() => {
+    if (state.message) requestFaceScan();
+  }, [state]);
   const note = pending ? "Syncing…" : (state.error ?? state.message);
   return (
     <form action={action} className={`flex items-center gap-2 ${note ? "" : revealClass}`}>

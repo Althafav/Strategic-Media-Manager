@@ -72,6 +72,17 @@ export function AddEventForm({ users }: { users: { email: string; label: string 
         disabled={pending}
       />
 
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="faceSearch" disabled={pending} className="mt-0.5" />
+        <span>
+          <span className="font-medium">Face search</span>
+          <span className="block text-xs text-subtle">
+            Scans the photos for faces once the event is indexed, so the team can find the photos someone is in with a selfie.
+            Turn it on for guests on share links in Settings.
+          </span>
+        </span>
+      </label>
+
       {state.error && (
         <p role="alert" className="text-sm rounded-md border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 px-3 py-2">
           {state.error}

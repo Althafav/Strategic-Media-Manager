@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -14,9 +15,11 @@ import type { CompressOptions } from "@/lib/image-compress";
 import { downloadAsZip, type ZipProgress } from "@/lib/zip-download";
 import { CompressButton } from "./compress-dialog";
 import { AddToAlbumButton } from "./add-to-album-button";
-import { Lightbox } from "./lightbox";
 import { RequestItemsButton } from "./request-photos-button";
 import { ShareItemsButton } from "./share-items-button";
+
+// Only mounted once a photo is opened, so keep it (and the video players it pulls in) out of the first load.
+const Lightbox = dynamic(() => import("./lightbox").then((m) => m.Lightbox), { ssr: false });
 
 type Props = {
   path: string[];

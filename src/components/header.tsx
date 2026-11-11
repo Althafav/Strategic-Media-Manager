@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import { listVisibleEvents } from "@/lib/events";
 import { inboxSeenAt, pendingCountFor, unseenAnswersFor } from "@/lib/requests";
 import { isPending, listUsers, normalizeEmail } from "@/lib/users";
+import { FaceScanner } from "./features/faces/face-scanner";
 import { SearchBox } from "./search-box";
 import { UserMenu } from "./user-menu";
 
@@ -57,6 +58,8 @@ export async function Header() {
             <Suspense fallback={<div className="flex-1 max-w-xl ml-auto h-9" />}>
               <SearchBox events={events.map((e) => ({ slug: e.slug, title: e.title }))} />
             </Suspense>
+            {/* Keeps the face index up to date in the background while the admin has the app open. */}
+            {session.role === "admin" && <FaceScanner />}
             <UserMenu
               name={displayName}
               email={session.email}

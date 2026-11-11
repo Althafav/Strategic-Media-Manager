@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Download, Link2Off } from "lucide-react";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { FindMyPhotos } from "@/components/features/faces/find-my-photos";
 import { Gallery } from "@/components/gallery";
 import { ShareStatus } from "@/components/share-link-actions";
 import { cleanName, downloadHref, formatBytes, shareHref, withPreviews } from "@/lib/format";
@@ -100,6 +101,17 @@ export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...
         ? "this photo"
         : `these ${items.length} ${allPhotos ? "photos" : "items"}`;
 
+  const gallery = (
+    <Gallery
+      path={path}
+      base={shareHref(token, path)}
+      folder={folder && signed(folder)}
+      downloadAll={picked && !path.length ? items : undefined}
+      folderName={title}
+      items={items}
+    />
+  );
+
   return (
     <>
       <div className="mt-5 border-l-4 border-pencil bg-surface px-4 py-3 text-sm flex flex-wrap items-baseline gap-x-6 gap-y-1">
@@ -117,15 +129,10 @@ export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...
         <SingleFile item={single} />
       ) : picked && !path.length && !items.length ? (
         <p className="py-24 text-center text-subtle">The shared files have been moved or deleted.</p>
+      ) : event.face_search ? (
+        <FindMyPhotos token={token}>{gallery}</FindMyPhotos>
       ) : (
-        <Gallery
-          path={path}
-          base={shareHref(token, path)}
-          folder={folder && signed(folder)}
-          downloadAll={picked && !path.length ? items : undefined}
-          folderName={title}
-          items={items}
-        />
+        gallery
       )}
     </>
   );

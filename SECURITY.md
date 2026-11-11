@@ -45,6 +45,20 @@ the authoritative per-layer rules.
   still needs to see each item's event (`canSeeEvent`), items from other private events are left out, and media
   requests go through the normal session branch of `resolveItemAccess`. A share link made from an album is an ordinary
   picked-items link (one event, a snapshot).
+- Face search, "Find my photos" (migrations 0023 to 0025, off per event until the admin turns it on in /settings; share
+  links have a second switch): the admin's browser scans previews of switched-on events only, in the background (`FaceScanner`, `app/faces/actions.ts`) and saves
+  only face embeddings (`face_embeddings`), never images. A guest's selfie is processed on their device
+  (`lib/faces.ts`); only its embedding reaches `findMyPhotosAction`, which checks the token, the email gate and
+  `events.face_search`, rate-limits per link + IP (20 per 10 min per instance), compares within the share's own folder
+  or picked items (`match_faces`), and drops it. The guest's own tab keeps that embedding in `sessionStorage` so
+  results survive navigation; it is cleared with "All photos" or when the tab closes. Results are signed like the share
+  page's own items. Embeddings are biometric data: they are deleted with the photo, the event, or the admin's "Delete
+  face index" (which also deletes the event's People). The model and runtime files under `/models` and `/ort-*` are
+  public (open weights) so share pages can load them without a session.
+- People (`/people/<slug>`, the lightbox's "People in this photo"): faces grouped into people per event
+  (`face_people`). Team members only: the pages and `itemFacesAction` need a session and `getVisibleEvent`, so share-link
+  visitors can never browse other people's faces. Only the admin names or hides a person; a hidden person is left out
+  for everyone else.
 - Path traversal is blocked: `getFolder` rejects `.`, `..` and slashes, and resolves relative to the
   share's `folder_id`, so a visitor cannot climb above the shared folder.
 - Fails closed: share lookups `.catch(() => null)`; revoked/expired shares resolve to `null` → 403.

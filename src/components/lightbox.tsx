@@ -17,12 +17,14 @@ import {
   Minimize,
   Pause,
   Play,
+  Users,
   X,
 } from "lucide-react";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { browseHref, cleanName, downloadHref, formatBytes, isMxfName, resizedPreview } from "@/lib/format";
 import type { LikeState } from "@/lib/like-types";
 import { CompressButton } from "./compress-dialog";
+import { PeopleInPhoto } from "./features/faces/people-in-photo";
 import { MxfPlayer } from "./mxf-player";
 import { VideoPlayer } from "./video-player";
 import { ShareItemsButton } from "./share-items-button";
@@ -58,6 +60,9 @@ export function Lightbox({ items, index, onIndex, onClose, share, showDetails = 
   const zoom = useRef<((cmd: ZoomCommand) => void) | null>(null);
   const [playing, setPlaying] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  // "People in this photo": team pages only (items seen through a share link carry `t`).
+  const [people, setPeople] = useState(false);
+  const canPeople = !!item.isImage && !item.t;
   // Only rendered after a click, never on the server, so reading storage here can't cause a hydration mismatch.
   const [info, setInfo] = useState(() => {
     try {
@@ -249,6 +254,11 @@ export function Lightbox({ items, index, onIndex, onClose, share, showDetails = 
             {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
           </button>
         )}
+        {canPeople && (
+          <button aria-label="People in this photo" title="People in this photo" aria-pressed={people} onClick={() => setPeople((on) => !on)} className={iconButton}>
+            <Users className="size-4" />
+          </button>
+        )}
         {showDetails && (
           <button aria-label="Details" title="Details (I)" aria-pressed={info} onClick={toggleInfo} className={iconButton}>
             <Info className="size-4" />
@@ -270,7 +280,8 @@ export function Lightbox({ items, index, onIndex, onClose, share, showDetails = 
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col md:flex-row">
-        <div className="relative flex-1 min-h-0">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+          <div className="relative flex-1 min-h-0">
           <Media
             key={`${item.event}/${item.id}`}
             item={item}
@@ -292,6 +303,8 @@ export function Lightbox({ items, index, onIndex, onClose, share, showDetails = 
               <div className="h-full bg-white/60 slideshow-progress" style={{ animationDuration: `${SLIDE_MS}ms` }} />
             </div>
           )}
+          </div>
+          {people && canPeople && <PeopleInPhoto key={`${item.event}/${item.id}`} item={item} />}
         </div>
         {showDetails && info && <InfoPanel item={item} />}
       </div>

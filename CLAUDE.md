@@ -55,8 +55,28 @@ src/lib/nodes.ts                `nodes` index row type + NodeRow -> MediaItem fo
 src/lib/email.ts                best-effort sendEmail via the AIM Congress generic email API (never throws; server-only)
 src/lib/sync/delta-sync.ts      OneDrive delta feed -> Supabase `nodes` (resumable cursor + `locked_until` lease in `event_sync`)
 src/lib/sync/status.ts          per-event index status for the event cards (server-only), plain-language sync errors
+src/lib/faces.ts                browser-only face detection API (loadFaces, detectFaces, detectBoxes) running lib/face-worker.ts in a Web Worker
+                                (main-thread fallback). `loadFaces({ gpu: true })` (the background scan) loads the WebGPU build; a selfie uses the CPU build
+src/lib/face-detect.ts          ONNX Runtime Web: YuNet detector (MIT) + SFace recogniser (Apache-2.0), 128-d embeddings. Models in
+                                public/models/faces-v1, runtime wasm in public/ort-<version> (copied from node_modules/onnxruntime-web/dist: only the plain
+                                and `asyncify` ort-wasm-simd-threaded files are used; copy again and rename the folder when the package is updated). YuNet sees faces of ~10-300 px, so event photos (`tiles`) get a
+                                640 px pass plus a 1920 px pass. WebGPU sessions must be created one at a time
+src/lib/face-types.ts           client-safe: MATCH_DIST/LOOSE_DIST/LEVEL_DIST/PERSON_DIST (cosine; PROVISIONAL, from a small sample), embedding
+                                wire format (base64 Float32), Person/PhotoFace types
+src/lib/face-index.ts           face index queries (server-only, migrations 0023 + 0024): saveScans (then assign_face_people), matchShareFaces
+                                (share scope -> match_faces RPC), listPeople/getPerson/personPhotos/itemFaces/updatePerson
+src/lib/face-scan-event.ts      `requestFaceScan()`: browser event that wakes the background scanner ("Sync now" fires it)
+src/app/faces/actions.ts        scan queue + batches + save, face search switch, delete index, rename/hide a person (all admin only);
+                                findMyPhotosTeamAction and itemFacesAction (any team member)
+src/components/features/faces/  face UI: find-my-photos.tsx (banner, dialog, results), selfie-camera.tsx (live camera, takes the photo by itself),
+                                face-picker.tsx (several faces: who?), match-level-toggle.tsx (Strict/Balanced/Loose), face-scanner.tsx (admin's
+                                background scan, mounted in the header, with time remaining), face-crop.tsx, people-in-photo.tsx (lightbox strip),
+                                person-controls.tsx
+src/components/ui/button.tsx    Button (primary / secondary / outline): use it for new UI
+src/app/people/[slug]           People: everyone the scan found in an event (team only, never on share links); /people/[slug]/[id] = one person's photos
 src/app/e/[slug]/[[...path]]    event folder browser (team)
-src/app/s/[token]/[[...path]]   shared folder / picked-items view (external, no login; email gate first: s/[token]/email-gate.tsx + actions.ts)
+src/app/s/[token]/[[...path]]   shared folder / picked-items view (external, no login; email gate first: s/[token]/email-gate.tsx + actions.ts);
+                                "Find my photos" (components/features/faces/find-my-photos.tsx + findMyPhotosAction) when events.face_search is on
 src/app/share-emails            admin-only: emails entered at share links, filter ?share=<token>, CSV export (export/route.ts)
 src/app/bin                     admin-only recycle bin: restore / delete forever / empty; lib/bin.ts holds BIN_DAYS + the purge
 src/app/shares                  list/revoke share links (own links; admin sees all + creator) + server actions
@@ -171,7 +191,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
   - Photos have square corners and 2px contact-sheet gutters. Corners are `rounded-md` for controls and
     `rounded-lg` for dialogs and panels.
   - Dialogs use native `<dialog>` + `showModal()`, and forms use `useActionState`. Match existing components.
-- Image compression and zipping happen in the browser only; the server never touches file bytes. Compress is
+- Image compression, zipping and face detection happen in the browser only; the server never touches file bytes. Compress is
   offered for images only (`isImagePath`).
 - MXF camera originals (Sony XAVC: H.264 High 4:2:2 + 24-bit PCM, 214 files of up to ~43 GB) count as video by
   extension (`isMxfName`; OneDrive gives them no `video` facet and no thumbnail, so `hasThumb` stays false). Browsers
@@ -208,7 +228,7 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
 
 ## Database
 
-Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` → `0019_private_events` → `0020_search_events` → `0021_albums` → `0022_user_last_seen` are applied by hand in Supabase. There is no CLI or DB URL
+Migrations `0001_init` → `0002_events` → `0003_shares` → `0004_share_items` → `0005_sync_lock` → `0006_share_downloads` → `0007_app_users` → `0008_share_owner` → `0009_user_access_requests` → `0010_photo_likes` → `0011_photo_requests` → `0012_photo_request_items` → `0013_photo_request_seen` → `0014_share_emails` → `0015_item_downloads` → `0016_folder_covers` → `0017_share_email_name` → `0018_recycle_bin` → `0019_private_events` → `0020_search_events` → `0021_albums` → `0022_user_last_seen` → `0023_face_index` → `0024_face_people` → `0025_face_scan` are applied by hand in Supabase. There is no CLI or DB URL
 here; DDL can't be run from the app. Tables:
 - `events`
 - `event_sync` (delta cursor)
@@ -233,6 +253,22 @@ here; DDL can't be run from the app. Tables:
   `(album_id, event_id, item_id)`, up to 1,000, with `name`/`kind`/`path`) can span events and folders; pages render them
   with `pickedItem` (`lib/nodes.ts`, shared with requests) and drop items from events the viewer can't see
   (`listVisibleEvents`). Deleting an album is immediate (no bin); deleting an event cascades its album items.
+- `face_scans` + `face_embeddings` (0023, reshaped by 0024): the face index for "Find my photos". `face_scans` has one row
+  per scanned photo (`faces` = count, 0 = none, -1 = unreadable) and cascades from `nodes`; `face_embeddings` holds
+  L2-normalised `halfvec(128)` per face with its `box` and `person_id`. Scanned in the admin's browser by the background
+  `FaceScanner` (header): only events with face search on (`events.face_scan`, 0025, `scansFaces` in lib/face-index.ts;
+  before 0025 it falls back to `face_search`), newest photos first, after each "Sync now" and every 5 min while the app is open; one
+  tab at a time (Web Locks). The nightly cron sync can't scan (the server never sees pixels), so those photos wait for the
+  admin's next visit. `events.face_scan` is the per-event switch (admin, /settings or Add event): off hides team "Find my
+  photos", People and the lightbox strip for that event and stops scanning, but keeps its faces. `events.face_search` adds
+  the share-page search and needs `face_scan` (setting one keeps the other consistent). /settings also deletes an index.
+  `match_faces` is an exact scan of one event's faces filtered to the share's folder path or picked ids/folders (no ANN
+  index on purpose). A guest's selfie embedding is never stored on the server (the tab keeps the last one in
+  sessionStorage so results survive navigation).
+- `face_people` (0024): one row per person found in an event (`total` = sum of their embeddings, `name`, `hidden`).
+  `assign_face_people(ev, max_dist)` groups new faces after every saved batch: biggest faces first, nearest person within
+  `PERSON_DIST`, never two faces of one photo in the same person, faces under 2.5% of the photo's width stay ungrouped.
+  `list_face_people` counts photos live. Only the admin names or hides a person; there is no merge/split yet.
 
 Recycle bin (0018): revoking a share link and deleting a photo request only set `deleted_at`/`deleted_by` on
 `shares`/`photo_requests`. Every read of those tables must filter `.is("deleted_at", null)` (bin views use

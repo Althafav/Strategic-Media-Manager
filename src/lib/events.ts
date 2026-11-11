@@ -19,10 +19,19 @@ export type EventRow = {
   coordinator_email?: string | null;
   /** Private events (`hidden`): app_users emails, besides the admin, who may see it (migration 0019). */
   viewer_emails?: string[];
+  /** "Find my photos" on the event's share links (migration 0023, lib/face-index.ts). */
+  face_search?: boolean;
+  /** Face scanning, team "Find my photos" and People for this event (migration 0025; `scansFaces` in lib/face-index.ts). */
+  face_scan?: boolean;
 };
 
 let cached: { at: number; rows: EventRow[] } | null = null;
 const TTL_MS = 30_000;
+
+/** After a change to an events row made outside this module. */
+export function forgetEvents() {
+  cached = null;
+}
 
 export async function listEvents({ includeHidden = false } = {}): Promise<EventRow[]> {
   if (!cached || Date.now() - cached.at > TTL_MS) {

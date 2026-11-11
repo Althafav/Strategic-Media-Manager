@@ -1,9 +1,13 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { Users } from "lucide-react";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { FindMyPhotos } from "@/components/features/faces/find-my-photos";
 import { Gallery } from "@/components/gallery";
 import { getSession } from "@/lib/auth";
 import { ShareFolderButton } from "@/components/share-folder-button";
 import { getVisibleEvent } from "@/lib/events";
+import { scansFaces } from "@/lib/face-index";
 import { browseHref, cleanName, withPreviews } from "@/lib/format";
 import { getFolder, NotFoundError } from "@/lib/onedrive/client";
 import { getEventCovers } from "@/lib/covers";
@@ -61,15 +65,30 @@ export default async function EventFolderPage({ params }: PageProps<"/e/[slug]/[
   const coordinatorName = activeUsers.find((u) => u.email === coordinator)?.label ?? coordinator;
   // The coordinator doesn't request from themselves; migration 0011 not run means no coordinator (undefined).
   const canRequest = !!coordinator && session.email !== coordinator;
+  // Find my photos and People only where the admin switched face search on.
+  const faces = scansFaces(event);
+
+  const gallery = (
+    <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={admin} likes={likes} downloads={downloads} requestTo={canRequest ? coordinatorName! : undefined} covers={covers} canSetCover={admin} />
+  );
 
   return (
     <>
       <Breadcrumbs base={browseHref(event.slug)} rootLabel={event.title} path={path} />
       <div className="flex flex-wrap items-end gap-3 mt-3">
         <h1 className="display text-4xl md:text-5xl flex-1 min-w-0 text-balance">{title}</h1>
+        {/* People: everyone the face scan found in this event (only events with face search on). */}
+        {faces && (
+          <Link
+            href={`/people/${encodeURIComponent(event.slug)}`}
+            className="h-9 px-3 rounded-md border border-border bg-surface text-sm font-medium inline-flex items-center gap-2 hover:border-foreground"
+          >
+            <Users className="size-4" /> People
+          </Link>
+        )}
         <ShareFolderButton event={event.slug} folderId={result.folder.id} folderPath={path} folderName={title} shares={shares} />
       </div>
-      <Gallery path={path} folder={{ event: event.slug, id: result.folder.id }} folderName={title} items={items} canShare showDetails={admin} likes={likes} downloads={downloads} requestTo={canRequest ? coordinatorName! : undefined} covers={covers} canSetCover={admin} />
+      {faces ? <FindMyPhotos slug={event.slug}>{gallery}</FindMyPhotos> : gallery}
     </>
   );
 }

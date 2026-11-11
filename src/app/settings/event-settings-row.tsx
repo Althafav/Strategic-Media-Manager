@@ -2,8 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, Trash2 } from "lucide-react";
 import { changeEventLinkAction, renameEventAction, setEventCoordinator, setEventPrivacyAction } from "@/app/events/actions";
+import { deleteFaceIndexAction, setFaceScanAction, setFaceSearchAction } from "@/app/faces/actions";
+import { requestFaceScan } from "@/lib/face-scan-event";
+import type { FaceIndexStatus } from "@/lib/face-types";
 import { EventPrivacyFields, type PrivacyUser } from "@/components/event-privacy-fields";
 import { EventCoverPicker } from "./event-cover-picker";
 
@@ -20,13 +23,18 @@ type Props = {
   rootId: string | null;
   /** Item id of the cover picked here, if any. */
   coverId?: string;
+  /**
+   * Face search: `scan` = photos are scanned (team search, People), `on` = also on share links, `canSwitchScan` = migration
+   * 0025 ran (before it, only the share-link switch exists and it alone decides scanning). Missing until migration 0023 runs.
+   */
+  faces?: { scan: boolean; on: boolean; canSwitchScan: boolean; status: FaceIndexStatus | null };
 };
 
 const field =
   "w-full h-10 rounded-md bg-background border border-border px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 disabled:opacity-60";
 
 /** One event's admin settings: name and privacy (saved on demand), coordinator (saved on change) and cover. */
-export function EventSettingsRow({ slug, title, shareUrl, coordinator, privacy, rootId, coverId }: Props) {
+export function EventSettingsRow({ slug, title, shareUrl, coordinator, privacy, rootId, coverId, faces }: Props) {
   const router = useRouter();
   const [name, setName] = useState(title);
   const [renaming, startRename] = useTransition();
@@ -104,6 +112,7 @@ export function EventSettingsRow({ slug, title, shareUrl, coordinator, privacy, 
       </div>
       <LinkSection slug={slug} shareUrl={shareUrl} onError={setError} />
       {privacy && <PrivacySection slug={slug} privacy={privacy} onError={setError} />}
+      {faces && <FaceSearchSection slug={slug} faces={faces} onError={setError} />}
       {rootId && (
         <div className="mt-4">
           <EventCoverPicker slug={slug} title={title} rootId={rootId} current={coverId} />
@@ -222,6 +231,109 @@ function PrivacySection({
         >
           {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
           Save visibility
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Face search for one event: scanning on/off (team "Find my photos" and People), under it the share-link switch for
+ * guests, how far the background scan is, and deleting the face index.
+ */
+function FaceSearchSection({
+  slug,
+  faces,
+  onError,
+}: {
+  slug: string;
+  faces: NonNullable<Props["faces"]>;
+  onError: (error: string | undefined) => void;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const { status } = faces;
+  const n = (v: number) => v.toLocaleString("en-GB");
+
+  const run = (action: () => Promise<{ error?: string }>, scanNow: boolean) =>
+    start(async () => {
+      const res = await action();
+      onError(res.error);
+      router.refresh();
+      // Start on the newly switched-on event now instead of at the scanner's next check.
+      if (!res.error && scanNow) requestFaceScan();
+    });
+
+  const guestSwitch = (
+    <label className={`flex items-start gap-2 text-sm ${faces.canSwitchScan ? "mt-2 ml-6" : ""} ${faces.canSwitchScan && !faces.scan ? "opacity-50" : ""}`}>
+      <input
+        type="checkbox"
+        checked={faces.on}
+        disabled={pending || (faces.canSwitchScan && !faces.scan)}
+        onChange={(e) => {
+          const on = e.currentTarget.checked;
+          run(() => setFaceSearchAction(slug, on), on);
+        }}
+        className="mt-0.5"
+      />
+      <span>
+        <span className="font-medium inline-flex items-center gap-2">
+          {faces.canSwitchScan ? "Also on share links" : "Find my photos on share links"}
+          {!faces.canSwitchScan && pending && <Loader2 className="size-3.5 animate-spin text-subtle" />}
+        </span>
+        <span className="block text-xs text-subtle">Guests take a selfie to see the photos they&apos;re in.</span>
+      </span>
+    </label>
+  );
+
+  return (
+    <div className="mt-4">
+      {faces.canSwitchScan && (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={faces.scan}
+            disabled={pending}
+            onChange={(e) => {
+              const on = e.currentTarget.checked;
+              run(() => setFaceScanAction(slug, on), on);
+            }}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="font-medium inline-flex items-center gap-2">
+              Face search {pending && <Loader2 className="size-3.5 animate-spin text-subtle" />}
+            </span>
+            <span className="block text-xs text-subtle">
+              Scan this event&apos;s photos for faces, so the team can use Find my photos and People.
+            </span>
+          </span>
+        </label>
+      )}
+      {guestSwitch}
+      {status && (faces.scan || status.scanned > 0) && (
+        <p className="mt-2 text-xs text-subtle">
+          {!faces.scan
+            ? `Scanning is off. The ${n(status.scanned)} photos already scanned are kept.`
+            : `${n(status.scanned)} of ${n(status.images)} photos scanned, ${n(status.faces)} faces. ${
+                status.scanned < status.images
+                  ? "The rest are scanned in the background while you have the app open."
+                  : "New photos are scanned by themselves after each sync."
+              }`}
+        </p>
+      )}
+      {!!status?.scanned && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (confirm("Delete this event's face index and its People? The photos are scanned again by themselves afterwards.")) {
+              run(() => deleteFaceIndexAction(slug), faces.scan);
+            }
+          }}
+          className="mt-2 h-9 px-3 rounded-md border border-border text-sm font-medium inline-flex items-center gap-1.5 hover:border-red-500 hover:text-red-600 disabled:opacity-40"
+        >
+          <Trash2 className="size-3.5" /> Delete face index
         </button>
       )}
     </div>
