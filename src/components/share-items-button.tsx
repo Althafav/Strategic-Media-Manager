@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 import { Share2 } from "lucide-react";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { cleanName } from "@/lib/format";
-import { MAX_SHARE_ITEMS } from "@/lib/share-types";
+import { listOwnItemLinksAction } from "@/app/shares/actions";
+import { MAX_SHARE_ITEMS, type LinkOption } from "@/lib/share-types";
 import { AllLinks, CreateShareForm, ShareDialog } from "./share-folder-button";
 
 type Props = {
@@ -20,6 +21,8 @@ export function ShareItemsButton({ items, folderId, folderPath, folderName }: Pr
   const dialog = useRef<HTMLDialogElement>(null);
   // Remount the form on every open so the previous link doesn't linger.
   const [opened, setOpened] = useState(0);
+  // Your picked-items links for this event, to add the selection to one instead; null while loading.
+  const [links, setLinks] = useState<LinkOption[] | null>(null);
 
   const events = new Set(items.map((i) => i.event));
   const allImages = items.every((i) => i.kind === "file" && i.isImage);
@@ -45,7 +48,14 @@ export function ShareItemsButton({ items, folderId, folderPath, folderName }: Pr
         type="button"
         onClick={() => {
           setOpened((n) => n + 1);
+          setLinks(null);
           dialog.current?.showModal();
+          // A failed lookup just means only "new link" is offered.
+          if (!problem) {
+            void listOwnItemLinksAction(items[0]?.event ?? "")
+              .then((res) => setLinks(res.links))
+              .catch(() => setLinks([]));
+          }
         }}
         className="h-9 px-3 rounded-md border border-white/25 text-sm font-medium inline-flex items-center gap-2 hover:bg-white/10"
       >
@@ -64,8 +74,11 @@ export function ShareItemsButton({ items, folderId, folderPath, folderName }: Pr
         ) : (
           opened > 0 && (
             <CreateShareForm
-              key={opened}
+              // The list arrives a moment after opening; remounting then is fine, nothing is typed yet.
+              key={`${opened}:${links ? "ready" : "loading"}`}
+              existing={links ?? []}
               fields={{
+                allImages: allImages ? "yes" : "no",
                 event: items[0]?.event ?? "",
                 itemIds: JSON.stringify(items.map((i) => i.id)),
                 folderId: folderId ?? "",

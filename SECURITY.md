@@ -30,6 +30,9 @@ the authoritative per-layer rules.
   signs each item it renders, `sig = HMAC(AUTH_SECRET, "share:<token>:<id>")`; media requests carry
   `?t=&sig=` and `lib/access.ts` `resolveItemAccess` verifies both. Sigs can't be forged, and a
   token only ever resolves items within its own event's drive.
+- Adding to a link: the link's creator or the admin can add items to a picked-items link afterwards
+  (`addShareItems`, behind the same consent tick; the URL stays the same). Nobody else can, and items
+  can't be removed from a link this way, so an issued sig never outlives its item's place in the link.
 - Email gate (`lib/share-emails.ts`, migration 0014): a share page shows only an email form, and
   loads nothing from OneDrive, until the visitor submits their full name and email. That sets the httpOnly cookie
   `smm_gate_<token>` = `HMAC(AUTH_SECRET, "gate:<token>")` (path `/`, 30 days). The page,

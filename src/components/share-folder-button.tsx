@@ -9,6 +9,7 @@ import {
   downloadSummary,
   EXPIRY_OPTIONS,
   isItemShare,
+  type LinkOption,
   type ShareRow,
 } from "@/lib/share-types";
 import {
@@ -161,8 +162,11 @@ export function ShareDialog(props: {
 /** Label + expiry form that creates a link from `fields` (hidden inputs) and copies it. */
 export function CreateShareForm({
   fields,
+  existing = [],
 }: {
   fields: Record<string, string>;
+  /** Picked-items links the selection can be added to instead of making a new link. */
+  existing?: LinkOption[];
 }) {
   const router = useRouter();
   const [state, action, pending] = useActionState<CreateShareState, FormData>(
@@ -170,10 +174,14 @@ export function CreateShareForm({
     {},
   );
   const [agreed, setAgreed] = useState(false);
-  // Each new link needs a fresh tick.
-  const [lastCreated, setLastCreated] = useState(state.created);
-  if (state.created !== lastCreated) {
-    setLastCreated(state.created);
+  // "new", or the id of the existing link to add to.
+  const [target, setTarget] = useState("new");
+  const adding = target !== "new";
+  // Each new link, and each addition, needs a fresh tick.
+  const done = state.created ?? state.added;
+  const [lastDone, setLastDone] = useState(done);
+  if (done !== lastDone) {
+    setLastDone(done);
     setAgreed(false);
   }
 
@@ -184,6 +192,10 @@ export function CreateShareForm({
     router.refresh();
   }, [state.created, router]);
 
+  useEffect(() => {
+    if (state.added) router.refresh();
+  }, [state.added, router]);
+
   return (
     <>
       <form
@@ -193,6 +205,39 @@ export function CreateShareForm({
         {Object.entries(fields).map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
         ))}
+        {adding && <input type="hidden" name="addTo" value={target} />}
+        {existing.length > 0 && (
+          <fieldset className="sm:col-span-3">
+            <legend className="text-sm font-medium mb-1.5">Share with</legend>
+            <ul className="max-h-44 overflow-y-auto rounded-md border border-border divide-y divide-border">
+              {[{ id: "new", name: "A new link", count: 0 }, ...existing].map((l) => (
+                <li key={l.id}>
+                  <label className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted">
+                    <input
+                      type="radio"
+                      // Not read by the action (it uses addTo); the shared name gives arrow-key movement.
+                      name="shareTarget"
+                      checked={target === l.id}
+                      onChange={() => setTarget(l.id)}
+                      className="size-4 accent-[var(--color-accent)]"
+                    />
+                    <span className="flex-1 min-w-0 truncate">{l.name}</span>
+                    {l.id !== "new" && (
+                      <span className="text-xs text-subtle tabular-nums">
+                        {l.count} {l.count === 1 ? "item" : "items"} now
+                      </span>
+                    )}
+                  </label>
+                </li>
+              ))}
+            </ul>
+            {adding && (
+              <p className="text-xs text-subtle mt-1.5">
+                The link stays the same. Everyone who has it will see the added files.
+              </p>
+            )}
+          </fieldset>
+        )}
         <div className="sm:col-span-3 rounded-md border border-border bg-background p-3 text-sm space-y-2">
           <p className="font-medium">Before you share</p>
           <ul className="list-disc pl-5 space-y-1 text-subtle">
@@ -228,41 +273,64 @@ export function CreateShareForm({
             </span>
           </label>
         </div>
-        <label className="block">
-          <span className="text-xs font-medium text-subtle">For</span>
-          <input
-            name="label"
-            required
-            maxLength={120}
-            placeholder="e.g. Reuters photo desk"
-            // Spaces alone don't name anyone.
-            pattern=".*\S.*"
-            title="Say who this link is for."
-            className={`${field} mt-1`}
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-subtle">Expires after</span>
-          <select name="expiry" defaultValue="30" className={`${field} mt-1`}>
-            {EXPIRY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!adding && (
+          <>
+            <label className="block">
+              <span className="text-xs font-medium text-subtle">For</span>
+              <input
+                name="label"
+                required
+                maxLength={120}
+                placeholder="e.g. Reuters photo desk"
+                // Spaces alone don't name anyone.
+                pattern=".*\S.*"
+                title="Say who this link is for."
+                className={`${field} mt-1`}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-subtle">Expires after</span>
+              <select name="expiry" defaultValue="30" className={`${field} mt-1`}>
+                {EXPIRY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
         <button
           disabled={pending || !agreed}
-          className="h-10 px-4 rounded-md bg-accent text-accent-foreground text-sm font-medium inline-flex items-center justify-center gap-2 disabled:opacity-60"
+          className={`h-10 px-4 rounded-md bg-accent text-accent-foreground text-sm font-medium inline-flex items-center justify-center gap-2 disabled:opacity-60 ${
+            adding ? "sm:col-span-3 sm:justify-self-end" : ""
+          }`}
         >
           {pending ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <Link2 className="size-4" />
           )}{" "}
-          Create link
+          {adding ? "Add to link" : "Create link"}
         </button>
       </form>
+
+      {state.added && (
+        <div
+          role="status"
+          className="rounded-md border border-green-600/30 bg-green-600/10 p-3 flex flex-wrap items-center gap-2"
+        >
+          <p className="text-sm flex-1 min-w-48">
+            {state.added.count
+              ? `Added ${state.added.count} to “${state.added.name}”.`
+              : `Everything was already in “${state.added.name}”.`}
+            {state.added.count > 0 &&
+              state.added.skipped > 0 &&
+              ` ${state.added.skipped} ${state.added.skipped === 1 ? "was" : "were"} already in it.`}
+          </p>
+          <CopyLinkButton token={state.added.token} label="Copy link" />
+        </div>
+      )}
 
       {state.error && (
         <p

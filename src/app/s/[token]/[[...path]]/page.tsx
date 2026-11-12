@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Download, Link2Off } from "lucide-react";
+import Link from "next/link";
+import { Download, Link2Off, Plus } from "lucide-react";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { FindMyPhotos } from "@/components/features/faces/find-my-photos";
 import { Gallery } from "@/components/gallery";
 import { ShareStatus } from "@/components/share-link-actions";
-import { cleanName, downloadHref, formatBytes, shareHref, withPreviews } from "@/lib/format";
+import { getSession } from "@/lib/auth";
+import { browseHref, cleanName, downloadHref, formatBytes, shareHref, withPreviews } from "@/lib/format";
 import { getFolder, getItems, NotFoundError } from "@/lib/onedrive/client";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { canViewShare } from "@/lib/share-emails";
-import { getActiveShare, signItem } from "@/lib/shares";
+import { getActiveShare, shareOwner, signItem } from "@/lib/shares";
 import { EmailGate } from "../email-gate";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +67,11 @@ export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...
 
   const { share, event } = active;
   const picked = share.item_ids?.length ? share.item_ids : null;
+  // The link's creator and the admin can add items to a picked-items link (addShareItems); they get a note at its root.
+  const session = picked && !path.length ? await getSession() : null;
+  const canAdd =
+    !!session &&
+    (session.role === "admin" || (shareOwner(session) === share.created_by && !event.hidden));
 
   // Sign every item so the media APIs can check it belongs to this share, and build its /api/thumb
   // URLs (carrying t/sig) so no raw OneDrive URL reaches the page. See SECURITY.md.
@@ -123,6 +130,22 @@ export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...
           <ShareStatus share={share} />
         </span>
       </div>
+      {canAdd && (
+        <div className="mt-2 border border-border bg-surface rounded-md px-4 py-3 text-sm flex flex-wrap items-center gap-x-6 gap-y-2">
+          <p className="flex-1 min-w-60">
+            <strong className="font-semibold">You can add to this link.</strong>{" "}
+            <span className="text-subtle">
+              Select photos or folders in the event, choose Share, then pick this link. Only you and the admin see this note.
+            </span>
+          </p>
+          <Link
+            href={browseHref(event.slug, share.folder_path)}
+            className="h-9 px-3 rounded-md border border-border text-sm font-medium inline-flex items-center gap-2 hover:border-foreground"
+          >
+            <Plus className="size-4" /> Add photos
+          </Link>
+        </div>
+      )}
       <Breadcrumbs base={shareHref(token)} rootLabel={share.folder_name} path={path} showEvents={false} />
       <h1 className="display text-4xl md:text-5xl mt-3 text-balance break-words">{title}</h1>
       {single ? (

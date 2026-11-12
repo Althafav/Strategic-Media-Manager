@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Session } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getEvent, listEvents, type EventRow } from "@/lib/events";
-import { isExpired, type ShareRow } from "@/lib/share-types";
+import { isExpired, isItemShare, MAX_SHARE_ITEMS, type ShareRow } from "@/lib/share-types";
 
 /**
  * Private view links. The token in `/s/<token>` grants view + download access to
@@ -67,6 +67,53 @@ export async function createShare(input: {
     .single();
   if (error) throw error;
   return data as ShareRow;
+}
+
+/**
+ * Adds items to a picked-items link; the URL stays the same and nothing is ever removed this way.
+ * With `createdBy`, only if that owner made the link (omit it for the admin).
+ */
+export async function addShareItems(input: {
+  id: string;
+  itemIds: string[];
+  event: EventRow;
+  createdBy?: string;
+  /** False when a pick isn't a photo, so the link's name says "items". */
+  allImages: boolean;
+}): Promise<{ ok: true; share: ShareRow; added: number } | { ok: false; error: string }> {
+  // Private events: only the admin shares from them (same rule as createShare).
+  if (input.event.hidden && input.createdBy) return { ok: false, error: "Only the admin can share a private event." };
+  let query = db().from("shares").select("*").eq("id", input.id).eq("event_id", input.event.id).is("deleted_at", null);
+  if (input.createdBy) query = query.eq("created_by", input.createdBy);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  const share = data as ShareRow | null;
+  if (!share || !isItemShare(share)) return { ok: false, error: "Link not found, or it was created by someone else." };
+  if (isExpired(share)) return { ok: false, error: "This link has expired. Create a new one." };
+
+  const have = new Set(share.item_ids);
+  const fresh = [...new Set(input.itemIds)].filter((id) => !have.has(id));
+  if (!fresh.length) return { ok: true, share, added: 0 };
+  const item_ids = [...share.item_ids!, ...fresh];
+  if (item_ids.length > MAX_SHARE_ITEMS) {
+    return { ok: false, error: `A link can hold up to ${MAX_SHARE_ITEMS} items. This one has ${have.size}.` };
+  }
+
+  // Names made by the Share dialog start with a count ("12 photos from Day 1"); keep it true. A single
+  // item's link is named after that item, which no longer fits once there are several.
+  const counted = /^\d+ (photos|items)\b(.*)$/.exec(share.folder_name);
+  const noun = counted?.[1] === "photos" && input.allImages ? "photos" : "items";
+  const folder_name = `${item_ids.length} ${noun}${counted?.[2] ?? ""}`;
+
+  const { data: updated, error: failed } = await db()
+    .from("shares")
+    .update({ item_ids, folder_name })
+    .eq("id", share.id)
+    .select("*")
+    .single();
+  if (failed) throw failed;
+  cache.delete(share.token);
+  return { ok: true, share: updated as ShareRow, added: fresh.length };
 }
 
 /** `createdBy` limits the list to one owner's links (team members); omit it for the admin's view of all. */

@@ -162,6 +162,10 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
    - Ownership (migration 0008): `created_by` is `"admin"` or the SSO user's email (`shareOwner`). Team members
      list and revoke only their own links (`ownerFilter`); the admin sees and revokes all, with "Added by".
      Null = made before tracking.
+   - Adding to a link (`addShareItems`): the creator or the admin can add items to a picked-items link from the Share
+     dialog in the selection bar ("Share with": a new link, or one they made; `createShareLink` with `addTo`). Same
+     consent tick, same URL, cap `MAX_SHARE_ITEMS`. Items are never removed this way, so no signature goes stale;
+     removal would need the signature tied to a link version. On `/s/<token>` the creator/admin sees an "Add photos" note.
 4. `next` redirect targets must be same-site relative paths (`safeNext` in `lib/auth.ts`).
 5. **Private events** (migration 0019): `events.hidden = true` means only the admin and the emails in
    `events.viewer_emails` see the event (`canSeeEvent` in `lib/events.ts`). Team-facing reads must use

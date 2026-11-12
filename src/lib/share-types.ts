@@ -29,7 +29,10 @@ export type ShareRow = {
 /** Most items one link may carry (each is looked up when the link is opened). */
 export const MAX_SHARE_ITEMS = 500;
 
-export const isItemShare = (s: Pick<ShareRow, "item_ids">) => !!s.item_ids?.length;
+/** A picked-items link the Share dialog can add to. */
+export type LinkOption = { id: string; name: string; count: number };
+
+export const isItemShare =(s: Pick<ShareRow, "item_ids">) => !!s.item_ids?.length;
 
 export const EXPIRY_OPTIONS = [
   { value: "7", label: "7 days" },

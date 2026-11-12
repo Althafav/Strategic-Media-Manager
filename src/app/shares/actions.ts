@@ -2,11 +2,34 @@
 
 import { getSession } from "@/lib/auth";
 import { isValidId } from "@/lib/onedrive/client";
-import { createShare, deleteShare, EXPIRY_OPTIONS, MAX_SHARE_ITEMS, ownerFilter, shareOwner, type ShareRow } from "@/lib/shares";
+import { getVisibleEvent } from "@/lib/events";
+import { isExpired, isItemShare, type LinkOption } from "@/lib/share-types";
+import { addShareItems, createShare, deleteShare, EXPIRY_OPTIONS, listShares, MAX_SHARE_ITEMS, ownerFilter, shareOwner, type ShareRow } from "@/lib/shares";
 
 const EXPIRED = "Your session has expired. Log in again.";
 
-export type CreateShareState = { error?: string; created?: ShareRow };
+export type CreateShareState = {
+  error?: string;
+  created?: ShareRow;
+  /** Items were added to an existing link instead. `at` makes each result distinct. */
+  added?: { token: string; name: string; count: number; skipped: number; at: number };
+};
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The picked-items links of one event that the Share dialog can add to: your own, or all of them for the admin. */
+export async function listOwnItemLinksAction(eventSlug: string): Promise<{ links: LinkOption[] }> {
+  const session = await getSession();
+  const event = session && (await getVisibleEvent(eventSlug));
+  // Private events: only the admin shares, so nobody else is offered a link to add to.
+  if (!session || !event || (event.hidden && session.role !== "admin")) return { links: [] };
+  const shares = await listShares({ eventId: event.id, createdBy: ownerFilter(session) }).catch(() => []);
+  return {
+    links: shares
+      .filter((s) => isItemShare(s) && !isExpired(s))
+      .map((s) => ({ id: s.id, name: s.label || s.folder_name, count: s.item_ids!.length })),
+  };
+}
 
 export async function createShareLink(_prev: CreateShareState, form: FormData): Promise<CreateShareState> {
   const session = await getSession();
@@ -25,6 +48,30 @@ export async function createShareLink(_prev: CreateShareState, form: FormData): 
     if (!itemIds.every(isValidId)) return { error: "Invalid selection." };
     if (folderId && !isValidId(folderId)) return { error: "Invalid folder." };
   } else if (!isValidId(folderId)) return { error: "Invalid folder." };
+
+  // "Add to a link you made" in the Share dialog: same consent and checks, no new link.
+  const addTo = String(form.get("addTo") ?? "");
+  if (addTo) {
+    if (!itemIds || !UUID.test(addTo)) return { error: "Invalid selection." };
+    // Only from an event this person can open (private events, canSeeEvent).
+    const event = await getVisibleEvent(String(form.get("event") ?? ""));
+    if (!event) return { error: "Event not found." };
+    try {
+      const result = await addShareItems({
+        id: addTo,
+        itemIds,
+        event,
+        createdBy: ownerFilter(session),
+        allImages: form.get("allImages") === "yes",
+      });
+      if (!result.ok) return { error: result.error };
+      const { share, added } = result;
+      return { added: { token: share.token, name: share.label || share.folder_name, count: added, skipped: itemIds.length - added, at: Date.now() } };
+    } catch (e) {
+      return { error: (e as Error).message || "Could not add to the link." };
+    }
+  }
+
   if (!EXPIRY_OPTIONS.some((o) => o.value === expiry)) return { error: "Pick when the link expires." };
   const label = String(form.get("label") ?? "").trim();
   if (!label) return { error: "Say who this link is for." };
