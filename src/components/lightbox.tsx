@@ -25,11 +25,12 @@ import { browseHref, cleanName, downloadHref, formatBytes, isMxfName, resizedPre
 import type { LikeState } from "@/lib/like-types";
 import { CompressButton } from "./compress-dialog";
 import { PeopleInPhoto } from "./features/faces/people-in-photo";
+import { SharePicksButton } from "./features/share/share-picks-button";
 import { MxfPlayer } from "./mxf-player";
 import { VideoPlayer } from "./video-player";
 import { ShareItemsButton } from "./share-items-button";
 
-/** Team pages pass where "Share" links are created from; share-link visitors can't share. */
+/** Team pages pass where "Share" links are created from; share-link visitors get "Copy link" (SharePicksButton) instead. */
 export type LightboxShare = { folderId?: string; folderPath: string[] };
 
 type Props = {
@@ -235,6 +236,7 @@ export function Lightbox({ items, index, onIndex, onClose, share, showDetails = 
             <FolderOpen className="size-4" /> <span className="hidden sm:inline">Open folder</span>
           </Link>
         )}
+        <SharePicksButton key={`link/${item.id}`} items={[item]} variant="lightbox" />
         <a
           href={downloadHref(item)}
           title="Download original"

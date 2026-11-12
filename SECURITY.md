@@ -33,6 +33,11 @@ the authoritative per-layer rules.
 - Adding to a link: the link's creator or the admin can add items to a picked-items link afterwards
   (`addShareItems`, behind the same consent tick; the URL stays the same). Nobody else can, and items
   can't be removed from a link this way, so an issued sig never outlives its item's place in the link.
+- Visitors' selection links: on a share page "Copy link" (selection bar, lightbox) builds
+  `/s/<token>?i=<id>.<sig>,…` from signatures the page already issued (up to 100 files, nothing is stored).
+  The page checks every pair with `verifyItem` and shows only those files, so the URL can't name an item
+  outside the link, and it shares the link's gate, expiry, revocation and counts. It is a view, not a
+  narrower grant: whoever has it holds the token and can open the whole link.
 - Email gate (`lib/share-emails.ts`, migration 0014): a share page shows only an email form, and
   loads nothing from OneDrive, until the visitor submits their full name and email. That sets the httpOnly cookie
   `smm_gate_<token>` = `HMAC(AUTH_SECRET, "gate:<token>")` (path `/`, 30 days). The page,

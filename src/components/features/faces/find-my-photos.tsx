@@ -269,7 +269,8 @@ export function FindMyPhotos({ token, slug, children }: { token?: string; slug?:
           </div>
           {shown.length > 0 && (
             <Gallery
-              // A new grid per level, so selection and scroll don't carry over to a different set.
+              // A new grid per level, so scroll doesn't carry over to a different set. (A share-link visitor's picks do:
+              // they stay in the selection bar across levels and folders.)
               key={level}
               path={[]}
               base={token ? shareHref(token) : undefined}

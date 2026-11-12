@@ -50,7 +50,8 @@ src/lib/mxf/                    in-browser MXF player (no transcoding): klv.ts (
                                 fmp4.ts (fragmented MP4), player.ts (MxfPlayback: range reads -> remux -> MSE); UI components/mxf-player.tsx
 src/lib/covers.ts               admin-picked folder covers (folder_covers, migration 0016): getEventCovers, setFolderCover; action in app/covers/actions.ts
 src/lib/downloads.ts            per-file download counts (item_downloads, migration 0015): recordItemDownloads, getEventDownloads, topDownloaded
-src/lib/selection-store.ts      cross-folder selection kept in sessionStorage (`smm:selection`), subscribe/getSelection store
+src/lib/selection-store.ts      cross-folder selection kept in sessionStorage, subscribe/getSelection store, one per scope: the team's
+                                (`smm:selection`) and one per share link for its visitors (`smm:selection:<token>`)
 src/lib/nodes.ts                `nodes` index row type + NodeRow -> MediaItem for the search/top pages
 src/lib/email.ts                best-effort sendEmail via the AIM Congress generic email API (never throws; server-only)
 src/lib/sync/delta-sync.ts      OneDrive delta feed -> Supabase `nodes` (resumable cursor + `locked_until` lease in `event_sync`)
@@ -142,6 +143,11 @@ supabase/migrations/            SQL, run MANUALLY by the user in the Supabase SQ
    - Any new UI that passes item refs around must keep `t`/`sig` (use the `Ref` type from `format.ts`).
    - Thumbnails/previews are built by `withPreviews` (`format.ts`) as `/api/thumb` URLs carrying
      `t`/`sig`; `toMediaItem` emits only `hasThumb`. Never embed a raw OneDrive thumbnail URL in a page.
+   - Visitors' selection links: "Copy link" on share pages (`components/features/share/share-picks-button.tsx`, in the
+     selection bar and the lightbox) builds `/s/<token>?i=<id>.<sig>,…` (`picksHref`/`parsePicks` in `share-types.ts`,
+     files only, up to `MAX_PICK_ITEMS`). The page verifies each pair (`verifyItem`) and renders `Picks`. Nothing is
+     stored, and it is a view of the link, not a narrower grant. The email gate's `back` keeps `?i=`. Visitors'
+     selections carry across the link's folders (the store's per-token scope), so one link can mix folders.
    - `proxy.ts` lets `/s/*` through, and lets media APIs through only when `t` is present.
    - **Email gate** (migration 0014, `lib/share-emails.ts`): a visitor must enter their full name and email before the share
      page loads anything from OneDrive. `submitShareEmail` stores it in `share_emails` and sets the signed cookie

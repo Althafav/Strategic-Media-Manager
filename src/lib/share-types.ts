@@ -29,6 +29,32 @@ export type ShareRow = {
 /** Most items one link may carry (each is looked up when the link is opened). */
 export const MAX_SHARE_ITEMS = 500;
 
+/** Most files a visitor's copied selection link may carry: they travel in the URL, ~60 characters each. */
+export const MAX_PICK_ITEMS = 100;
+
+/** One file in a visitor's selection link: its id and the signature the share page issued for it. */
+export type SharePick = { id: string; sig: string };
+
+// Ids are `[A-Za-z0-9!_-]` and signatures base64url, so "." and "," can't appear inside either.
+const PICK_RE = /^[A-Za-z0-9!_-]+\.[A-Za-z0-9_-]+$/;
+
+/** A view of some files of a share link, `/s/<token>?i=<id>.<sig>,…`. It opens nothing the link itself doesn't. */
+export const picksHref = (token: string, picks: SharePick[]) =>
+  `/s/${token}?i=${picks.map((p) => `${p.id}.${p.sig}`).join(",")}`;
+
+/** Reads `?i=`. Null when malformed or over the cap. The caller must still check every signature (`verifyItem`). */
+export function parsePicks(raw: string): SharePick[] | null {
+  const pairs = raw.split(",");
+  if (pairs.length > MAX_PICK_ITEMS) return null;
+  const picks = new Map<string, SharePick>();
+  for (const pair of pairs) {
+    if (!PICK_RE.test(pair)) return null;
+    const [id, sig] = pair.split(".");
+    picks.set(id, { id, sig });
+  }
+  return [...picks.values()];
+}
+
 /** A picked-items link the Share dialog can add to. */
 export type LinkOption = { id: string; name: string; count: number };
 

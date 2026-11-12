@@ -11,7 +11,8 @@ import { browseHref, cleanName, downloadHref, formatBytes, shareHref, withPrevie
 import { getFolder, getItems, NotFoundError } from "@/lib/onedrive/client";
 import type { MediaItem } from "@/lib/onedrive/types";
 import { canViewShare } from "@/lib/share-emails";
-import { getActiveShare, shareOwner, signItem } from "@/lib/shares";
+import { parsePicks, type ShareRow } from "@/lib/share-types";
+import { getActiveShare, shareOwner, signItem, verifyItem } from "@/lib/shares";
 import { EmailGate } from "../email-gate";
 
 export const dynamic = "force-dynamic";
@@ -48,8 +49,11 @@ export async function generateMetadata({ params }: PageProps<"/s/[token]/[[...pa
  * where only picked folders can be opened. No login, but visitors must enter an email first (lib/share-emails.ts);
  * team members skip that.
  */
-export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...path]]">) {
+export default async function SharedPage({ params, searchParams }: PageProps<"/s/[token]/[[...path]]">) {
   const { token, path: rawPath = [] } = await params;
+  // A visitor's copied selection (`picksHref`): only at the link's root.
+  const { i } = await searchParams;
+  const rawPicks = !rawPath.length && typeof i === "string" && i ? i : null;
   const active = await lookup(token);
   if (!active) {
     return (
@@ -63,20 +67,33 @@ export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...
 
   const path = rawPath.map(decode);
   // Nothing from OneDrive is loaded until the visitor has entered an email.
-  if (!(await canViewShare(token))) return <EmailGate token={token} back={shareHref(token, path)} />;
+  if (!(await canViewShare(token))) {
+    const back = rawPicks ? `${shareHref(token)}?i=${encodeURIComponent(rawPicks)}` : shareHref(token, path);
+    return <EmailGate token={token} back={back} />;
+  }
 
   const { share, event } = active;
+
+  // Sign every item so the media APIs can check it belongs to this share, and build its /api/thumb
+  // URLs (carrying t/sig) so no raw OneDrive URL reaches the page. See SECURITY.md.
+  const signed = <T extends { id: string; hasThumb?: boolean }>(i: T) =>
+    withPreviews({ ...i, event: event.slug, t: token, sig: signItem(token, i.id) });
+
+  if (rawPicks) {
+    // Each signature was issued by this page for an item inside the link, so a valid one proves the item belongs here.
+    const picks = parsePicks(rawPicks)?.filter((p) => verifyItem(token, p.id, p.sig));
+    if (!picks?.length) notFound();
+    const found = await getItems(event.share_url, picks.map((p) => p.id), share.folder_id);
+    // Files only: a folder would need its own route to be opened from here.
+    return <Picks share={share} items={found.filter((f) => f.kind === "file").map(signed)} />;
+  }
+
   const picked = share.item_ids?.length ? share.item_ids : null;
   // The link's creator and the admin can add items to a picked-items link (addShareItems); they get a note at its root.
   const session = picked && !path.length ? await getSession() : null;
   const canAdd =
     !!session &&
     (session.role === "admin" || (shareOwner(session) === share.created_by && !event.hidden));
-
-  // Sign every item so the media APIs can check it belongs to this share, and build its /api/thumb
-  // URLs (carrying t/sig) so no raw OneDrive URL reaches the page. See SECURITY.md.
-  const signed = <T extends { id: string; hasThumb?: boolean }>(i: T) =>
-    withPreviews({ ...i, event: event.slug, t: token, sig: signItem(token, i.id) });
 
   let folder: { id: string } | undefined;
   let items: MediaItem[];
@@ -99,14 +116,8 @@ export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...
   }
 
   const title = cleanName(path.length ? path.at(-1)! : share.folder_name);
-  const single = picked && !path.length && items.length === 1 && items[0].isImage ? items[0] : null;
-  const allPhotos = items.every((i) => i.isImage);
-  const scope =
-    !picked || path.length
-      ? "everything in this folder"
-      : single
-        ? "this photo"
-        : `these ${items.length} ${allPhotos ? "photos" : "items"}`;
+  const single = picked && !path.length ? singlePhoto(items) : null;
+  const scope = !picked || path.length ? "everything in this folder" : pickedScope(items);
 
   const gallery = (
     <Gallery
@@ -121,15 +132,7 @@ export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...
 
   return (
     <>
-      <div className="mt-5 border-l-4 border-pencil bg-surface px-4 py-3 text-sm flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <p className="flex-1 min-w-60">
-          <strong className="font-semibold">Shared with you by Strategic.</strong>{" "}
-          <span className="text-subtle">You can view and download {scope}.</span>
-        </p>
-        <span className="text-subtle">
-          <ShareStatus share={share} />
-        </span>
-      </div>
+      <SharedBanner share={share} scope={scope} />
       {canAdd && (
         <div className="mt-2 border border-border bg-surface rounded-md px-4 py-3 text-sm flex flex-wrap items-center gap-x-6 gap-y-2">
           <p className="flex-1 min-w-60">
@@ -156,6 +159,52 @@ export default async function SharedPage({ params }: PageProps<"/s/[token]/[[...
         <FindMyPhotos token={token}>{gallery}</FindMyPhotos>
       ) : (
         gallery
+      )}
+    </>
+  );
+}
+
+/** A lone photo gets the large single view. */
+const singlePhoto = (items: MediaItem[]) => (items.length === 1 && items[0].isImage ? items[0] : null);
+
+const pickedNoun = (items: MediaItem[]) => (items.every((i) => i.isImage) ? "photos" : "items");
+
+const pickedScope = (items: MediaItem[]) => (singlePhoto(items) ? "this photo" : `these ${items.length} ${pickedNoun(items)}`);
+
+function SharedBanner({ share, scope }: { share: ShareRow; scope: string }) {
+  return (
+    <div className="mt-5 border-l-4 border-pencil bg-surface px-4 py-3 text-sm flex flex-wrap items-baseline gap-x-6 gap-y-1">
+      <p className="flex-1 min-w-60">
+        <strong className="font-semibold">Shared with you by Strategic.</strong>{" "}
+        <span className="text-subtle">You can view and download {scope}.</span>
+      </p>
+      <span className="text-subtle">
+        <ShareStatus share={share} />
+      </span>
+    </div>
+  );
+}
+
+/**
+ * A visitor's copied selection (`picksHref`): some files of this link, shown like a picked-items link.
+ * The breadcrumb leads to the whole link, which the same token opens anyway.
+ */
+function Picks({ share, items }: { share: ShareRow; items: MediaItem[] }) {
+  const single = singlePhoto(items);
+  const from = cleanName(share.folder_name);
+  return (
+    <>
+      <SharedBanner share={share} scope={pickedScope(items)} />
+      <Breadcrumbs base={shareHref(share.token)} rootLabel={share.folder_name} path={["Selection"]} showEvents={false} />
+      <h1 className="display text-4xl md:text-5xl mt-3 text-balance break-words">
+        {single ? "A photo picked for you" : `${items.length} ${pickedNoun(items)} picked for you`}
+      </h1>
+      {single ? (
+        <SingleFile item={single} />
+      ) : items.length ? (
+        <Gallery path={[]} base={shareHref(share.token)} downloadAll={items} folderName={`${from} - selection`} items={items} />
+      ) : (
+        <p className="py-24 text-center text-subtle">The shared files have been moved or deleted.</p>
       )}
     </>
   );

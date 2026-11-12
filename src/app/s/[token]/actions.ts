@@ -33,7 +33,8 @@ export async function submitShareEmail(_prev: GateState, form: FormData): Promis
   await setGateCookie(token);
   // Back to the page they opened, but only somewhere inside this link.
   const back = String(form.get("back") ?? "");
-  redirect(back.startsWith(`/s/${token}/`) || back === `/s/${token}` ? back : `/s/${token}`);
+  const inside = back === `/s/${token}` || back.startsWith(`/s/${token}/`) || back.startsWith(`/s/${token}?`);
+  redirect(inside ? back : `/s/${token}`);
 }
 
 /** A matched photo and how close its nearest face was (cosine distance, see MATCH_DIST). */

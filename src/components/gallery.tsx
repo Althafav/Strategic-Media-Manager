@@ -15,6 +15,7 @@ import type { CompressOptions } from "@/lib/image-compress";
 import { downloadAsZip, type ZipProgress } from "@/lib/zip-download";
 import { CompressButton } from "./compress-dialog";
 import { AddToAlbumButton } from "./add-to-album-button";
+import { SharePicksButton } from "./features/share/share-picks-button";
 import { RequestItemsButton } from "./request-photos-button";
 import { ShareItemsButton } from "./share-items-button";
 
@@ -27,7 +28,7 @@ type Props = {
   folder?: Ref;
   /** What "Download all" zips when there's no folder, e.g. the picked items of a share link. */
   downloadAll?: Ref[];
-  /** Team pages: show "Share" for the selection, and keep the selection while moving between folders. */
+  /** Team pages: show "Share" for the selection. (Share-link visitors get "Copy link" instead.) */
   canShare?: boolean;
   /** Photo details panel in the lightbox (admin only). */
   showDetails?: boolean;
@@ -63,7 +64,9 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
     [allFiles, filter, sort],
   );
   const kinds = useMemo(() => countKinds(allFiles), [allFiles]);
-  const { selected, selectedItems, setSelected } = useSelection(!!canShare, items, path);
+  // Kept across folders for the team ("") and for a share link's visitors (its token, which every signed item carries).
+  const selectionScope = canShare ? "" : (folder?.t ?? items.find((i) => i.t)?.t ?? null);
+  const { selected, selectedItems, setSelected } = useSelection(selectionScope, items, path);
   const [open, setOpen] = useState<number | null>(null);
   const lastClicked = useRef<number | null>(null);
   const zip = useZip();
@@ -347,6 +350,7 @@ export function Gallery({ path, folder, downloadAll, canShare, showDetails, base
                   </button>
                 )}
                 {requestTo && folder && <RequestItemsButton event={folder.event} items={selectedItems} folderPath={path} coordinator={requestTo} />}
+                {!canShare && <SharePicksButton items={selectedItems} />}
                 {canCompress && <CompressButton items={selectedItems} onBatch={compressSelected} variant="bar" />}
                 <button
                   className="h-9 px-3 w-full rounded-md bg-pencil text-foreground text-sm font-semibold inline-flex items-center justify-center gap-2 hover:brightness-110"
@@ -702,12 +706,14 @@ function ZipStatus({ progress, onCancel }: { progress: ZipProgress; onCancel: ()
 }
 
 /**
- * Selected items by key. Team pages keep the selection in the shared store so it carries across folders and
- * search; share pages keep it per page. Items are stored with their folder (`location`) so a later share or
- * download from another page still knows where each one came from.
+ * Selected items by key. With a `scope` (see lib/selection-store.ts) the selection lives in the shared store, so it
+ * carries across folders and search; with null (albums, requests…) it is kept per page. Items are stored with their
+ * folder (`location`) so a later share or download from another page still knows where each one came from.
  */
-function useSelection(persist: boolean, items: MediaItem[], path: string[]) {
-  const stored = useSyncExternalStore(subscribeSelection, getSelection, getServerSelection);
+function useSelection(scope: string | null, items: MediaItem[], path: string[]) {
+  const persist = scope !== null;
+  const getStored = useCallback(() => getSelection(scope ?? ""), [scope]);
+  const stored = useSyncExternalStore(subscribeSelection, getStored, getServerSelection);
   const [local, setLocal] = useState<Selection>(new Map());
   const picked = persist ? stored : local;
 
@@ -723,10 +729,10 @@ function useSelection(persist: boolean, items: MediaItem[], path: string[]) {
         }
         return next;
       };
-      if (persist) setSelection(rebuild(getSelection()));
+      if (scope !== null) setSelection(rebuild(getSelection(scope)), scope);
       else setLocal(rebuild);
     },
-    [persist, items, path],
+    [scope, items, path],
   );
 
   return {
